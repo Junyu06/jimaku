@@ -335,3 +335,56 @@ struct TranslationDeliveryTests {
         #expect(handedOut.map(\.original) == ["Alpha."])
     }
 }
+
+/// Found in the fourth review: a sentence vanishes and the same words come back
+/// before the first translation job has reported.
+@Suite("A sentence that vanishes and comes back")
+struct VanishedAndBackTests {
+    private func vanishAndReturn() -> (transcript: Transcript, old: Transcript.Entry, new: Transcript.Entry) {
+        var transcript = Transcript()
+        let old = transcript.apply(.partial("Alpha. x"))[0]
+        transcript.apply(.partial("Beta. x"))
+        let new = transcript.apply(.partial("Alpha. x"))[0]
+        return (transcript, old, new)
+    }
+
+    @Test("The sentence that came back is a new sentence")
+    func isHandedOutAgain() {
+        let (_, old, new) = vanishAndReturn()
+        #expect(old.original == new.original)
+        #expect(old != new)
+    }
+
+    @Test("The old job's translation does not reach the sentence that came back")
+    func oldSuccessIsIgnored() {
+        var (transcript, old, new) = vanishAndReturn()
+        transcript.setTranslation("旧的译文", for: old)
+        #expect(transcript.entries[0].translation == nil)
+        transcript.setTranslation("新的译文", for: new)
+        #expect(transcript.entries[0].translation == "新的译文")
+    }
+
+    @Test("The old job's translation is still ignored after the stretch is final")
+    func oldSuccessIsIgnoredAfterFinal() {
+        var (transcript, old, new) = vanishAndReturn()
+        transcript.apply(.final("Alpha. x."))
+        transcript.setTranslation("旧的译文", for: old)
+        #expect(transcript.entries[0].translation == nil)
+        transcript.setTranslation("新的译文", for: new)
+        #expect(transcript.entries[0].translation == "新的译文")
+    }
+
+    @Test("The old job's failure does not make the sentence that came back be handed out twice")
+    func oldFailureIsIgnored() {
+        var (transcript, old, _) = vanishAndReturn()
+        transcript.translationFailed(for: old)
+        #expect(transcript.apply(.partial("Alpha. x y")).isEmpty)
+    }
+
+    @Test("The new job's failure still lets the sentence be retried")
+    func newFailureIsRetried() {
+        var (transcript, _, new) = vanishAndReturn()
+        transcript.translationFailed(for: new)
+        #expect(transcript.apply(.partial("Alpha. x y")).map(\.original) == ["Alpha."])
+    }
+}
