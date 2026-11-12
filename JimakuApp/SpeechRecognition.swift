@@ -168,7 +168,7 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
             try? await Task.sleep(for: .milliseconds(10))
             if Task.isCancelled { return }
         }
-        guard taken else { return }
+        guard taken, !Task.isCancelled else { return }
         let request = Request()
         Task {
             try? await analyzer.finalize(through: nil)

@@ -25,7 +25,7 @@ Cost accepted:
 
 - Two short lines use less of the row than flowing text did, so less is on screen at once.
 - When a translation needs both lines, the one before it leaves at that moment, however recently it appeared.
-- The first lines of a long translation stay for a fixed 2.5 seconds, whatever their length and however fast the reader is, and its last lines are lost if someone speaks again within that time.
+- The first lines of a long translation stay for a fixed 2.5 seconds, whatever their length and however fast the reader is, and its last lines are lost if the next translation arrives within that time.
 - After a long sentence is said, the original row holds only its last line.
 
 Status of evidence: the rows are covered by unit tests; the timer that turns the page is in the app's session controller and is not. Seen in an iPad simulator with scripted English at medium size, and on a Mac in the rows computed for a 145-second recording of Japanese conversation. Not yet run on a physical device.
