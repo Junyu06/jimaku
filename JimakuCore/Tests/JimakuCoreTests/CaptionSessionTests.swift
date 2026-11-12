@@ -1,6 +1,6 @@
 import Testing
 
-@testable import JimakuCore
+import JimakuCore
 
 @Suite("CaptionSession")
 struct CaptionSessionTests {
@@ -31,6 +31,39 @@ struct CaptionSessionTests {
         session.start()
         session.start()
         #expect(session.state == .running)
+    }
+
+    @Test("Stopping an idle session keeps it idle")
+    func stopWhenIdleStaysIdle() {
+        var session = CaptionSession()
+        session.stop()
+        #expect(session.state == .idle)
+    }
+
+    @Test("Stopping twice keeps the session idle")
+    func stopTwiceStaysIdle() {
+        var session = CaptionSession()
+        session.start()
+        session.stop()
+        session.stop()
+        #expect(session.state == .idle)
+    }
+
+    @Test("A stopped session can be started again")
+    func startAfterStopRunsAgain() {
+        var session = CaptionSession()
+        session.start()
+        session.stop()
+        session.start()
+        #expect(session.state == .running)
+    }
+
+    @Test("The primary action is Start again after stopping")
+    func primaryActionAfterStopIsStart() {
+        var session = CaptionSession()
+        session.start()
+        session.stop()
+        #expect(session.primaryAction == .start)
     }
 
     @Test("The primary action is Start when idle and Stop when running")

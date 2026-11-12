@@ -11,5 +11,5 @@ status: simulated
 
 ## Evidence
 
-- 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0: icon present, button shows 开始, one tap shows 停止. Simulator only.
+- 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0: icon present, button shows 开始, one tap shows 停止, a second tap shows 开始 again. Simulator only.
 - Physical device: not run.
