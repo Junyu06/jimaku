@@ -69,7 +69,7 @@ struct TranslationPromptTests {
         let english = TranslationPrompt.instructions(from: .english)
         #expect(english.contains("English"))
         #expect(english.contains("Simplified Chinese"))
-        #expect(english.localizedLowercaseContains("only"))
+        #expect(english.lowercased().contains("only"))
         #expect(TranslationPrompt.instructions(from: .japanese).contains("Japanese"))
     }
 
