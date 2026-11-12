@@ -13,7 +13,8 @@ struct AudioRingTests {
         let ring = try AudioRing(url: temporaryURL(), capacity: 8)
         #expect(ring.writeCount == 0)
         #expect(ring.isBroadcasting == false)
-        #expect(ring.isStopRequested == false)
+        #expect(ring.isCaptureWanted == false)
+        #expect(ring.lastHeartbeatTime == 0)
         var position: UInt64 = 0
         #expect(ring.read(from: &position, max: 100).isEmpty)
         #expect(position == 0)
@@ -95,9 +96,9 @@ struct AudioRingTests {
         let a = try AudioRing(url: url, capacity: 8)
         let b = try AudioRing(url: url, capacity: 8)
         a.isBroadcasting = true
-        b.isStopRequested = true
+        b.isCaptureWanted = true
         #expect(b.isBroadcasting)
-        #expect(a.isStopRequested)
+        #expect(a.isCaptureWanted)
         a.isBroadcasting = false
         #expect(b.isBroadcasting == false)
     }
@@ -143,6 +144,133 @@ struct AudioRingTests {
         #expect(ring.lastWriteTime == 0)
         ring.write([1], at: 1234.5)
         #expect(ring.lastWriteTime == 1234.5)
+    }
+}
+
+@Suite("AudioRing sharing")
+struct AudioRingSharingTests {
+    private func temporaryURL() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("audio-ring-\(UUID().uuidString).bin")
+    }
+
+    @Test("Writing counts as a sign of life from the writer")
+    func writeIsAHeartbeat() throws {
+        let ring = try AudioRing(url: temporaryURL(), capacity: 8)
+        ring.write([1], at: 50)
+        #expect(ring.lastHeartbeatTime == 50)
+    }
+
+    @Test("A heartbeat without audio does not count as a write")
+    func heartbeatAlone() throws {
+        let ring = try AudioRing(url: temporaryURL(), capacity: 8)
+        ring.write([1], at: 50)
+        ring.heartbeat(at: 60)
+        #expect(ring.lastHeartbeatTime == 60)
+        #expect(ring.lastWriteTime == 50)
+        #expect(ring.writeCount == 1)
+    }
+
+    @Test("A non-blocking write succeeds when nobody holds the ring")
+    func tryWriteWhenFree() throws {
+        let ring = try AudioRing(url: temporaryURL(), capacity: 8)
+        let written = [1, 2, 3].withUnsafeBufferPointer { ring.tryWrite($0, at: 1) }
+        #expect(written)
+        var position: UInt64 = 0
+        #expect(ring.read(from: &position, max: 100) == [1, 2, 3])
+    }
+
+    @Test("Opening a second handle while the first is in use does not clear it")
+    func secondOpenKeepsData() throws {
+        let url = temporaryURL()
+        let first = try AudioRing(url: url, capacity: 8)
+        first.write([1, 2, 3])
+        first.isBroadcasting = true
+        let second = try AudioRing(url: url, capacity: 8)
+        #expect(second.writeCount == 3)
+        #expect(first.isBroadcasting)
+    }
+
+    @Test("Replacing a ring of another capacity leaves the old handle usable")
+    func replacingDoesNotBreakOldHandle() throws {
+        let url = temporaryURL()
+        let old = try AudioRing(url: url, capacity: 64)
+        old.write([Int16](repeating: 7, count: 64))
+        _ = try AudioRing(url: url, capacity: 8)
+        // The old handle keeps its own mapping; touching all of it must not fault.
+        var position: UInt64 = 0
+        #expect(old.read(from: &position, max: 100).count == 64)
+        old.write([Int16](repeating: 9, count: 64))
+    }
+
+    @Test("A reader never sees samples out of order while a writer is writing")
+    func concurrentReadsStayContiguous() async throws {
+        let url = temporaryURL()
+        let capacity = 64
+        let total = 20_000
+        let writer = Task.detached {
+            let ring = try AudioRing(url: url, capacity: capacity)
+            var next: Int16 = 0
+            var written = 0
+            while written < total {
+                let count = min(7, total - written)
+                let chunk = (0..<count).map { _ -> Int16 in
+                    defer { next = next == 9_999 ? 0 : next + 1 }
+                    return next
+                }
+                ring.write(chunk)
+                written += count
+            }
+        }
+        let reader = Task.detached { () -> Bool in
+            let ring = try AudioRing(url: url, capacity: capacity)
+            var position: UInt64 = 0
+            var contiguous = true
+            while position < UInt64(total) {
+                let before = position
+                let samples = ring.read(from: &position, max: 50)
+                // Every sample must be the one its position says: value == index mod 10000.
+                let start = position - UInt64(samples.count)
+                for (offset, sample) in samples.enumerated()
+                where Int(sample) != Int((start + UInt64(offset)) % 10_000) {
+                    contiguous = false
+                }
+                if samples.isEmpty, position == before { await Task.yield() }
+            }
+            return contiguous
+        }
+        try await writer.value
+        #expect(try await reader.value)
+    }
+}
+
+@Suite("AudioAvailability")
+struct AudioAvailabilityTests {
+    @Test("No broadcast flag means no broadcast")
+    func notBroadcasting() {
+        #expect(AudioAvailability.assess(isBroadcasting: false, lastHeartbeat: 100, lastWrite: 100, now: 100) == .notBroadcasting)
+    }
+
+    @Test("Fresh audio means receiving")
+    func receiving() {
+        #expect(AudioAvailability.assess(isBroadcasting: true, lastHeartbeat: 100, lastWrite: 99.5, now: 100) == .receiving)
+    }
+
+    @Test("A live broadcast with no recent audio is stalled")
+    func stalled() {
+        #expect(AudioAvailability.assess(isBroadcasting: true, lastHeartbeat: 99, lastWrite: 90, now: 100) == .stalled)
+    }
+
+    @Test("A broadcast flag left behind by a dead extension does not count as a broadcast")
+    func staleFlag() {
+        #expect(AudioAvailability.assess(isBroadcasting: true, lastHeartbeat: 80, lastWrite: 80, now: 100) == .notBroadcasting)
+    }
+
+    @Test("The thresholds are a second and a half for audio and five seconds for life")
+    func thresholds() {
+        #expect(AudioAvailability.assess(isBroadcasting: true, lastHeartbeat: 100, lastWrite: 98.6, now: 100) == .receiving)
+        #expect(AudioAvailability.assess(isBroadcasting: true, lastHeartbeat: 100, lastWrite: 98.4, now: 100) == .stalled)
+        #expect(AudioAvailability.assess(isBroadcasting: true, lastHeartbeat: 95.1, lastWrite: 0, now: 100) == .stalled)
+        #expect(AudioAvailability.assess(isBroadcasting: true, lastHeartbeat: 94.9, lastWrite: 0, now: 100) == .notBroadcasting)
     }
 }
 
