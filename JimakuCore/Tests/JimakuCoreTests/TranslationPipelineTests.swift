@@ -19,7 +19,7 @@ struct TranslationPipelineTests {
         var pipeline = TranslationPipeline()
         pipeline.settle(entry(0))
         pipeline.setReadiness(.ready)
-        #expect(pipeline.takeNext() == .entry(entry(0))
+        #expect(pipeline.takeNext() == .entry(entry(0)))
     }
 
     @Test("Only one sentence is translated at a time, in order")
@@ -28,10 +28,10 @@ struct TranslationPipelineTests {
         pipeline.setReadiness(.ready)
         pipeline.settle(entry(0))
         pipeline.settle(entry(1))
-        #expect(pipeline.takeNext() == .entry(entry(0))
+        #expect(pipeline.takeNext() == .entry(entry(0)))
         #expect(pipeline.takeNext() == nil)
         pipeline.finishCurrent()
-        #expect(pipeline.takeNext() == .entry(entry(1))
+        #expect(pipeline.takeNext() == .entry(entry(1)))
         pipeline.finishCurrent()
         #expect(pipeline.takeNext() == nil)
     }
@@ -43,9 +43,9 @@ struct TranslationPipelineTests {
         pipeline.settle(entry(1))
         pipeline.settle(entry(2))
         pipeline.setReadiness(.ready)
-        #expect(pipeline.takeNext() == .entry(entry(1))
+        #expect(pipeline.takeNext() == .entry(entry(1)))
         pipeline.finishCurrent()
-        #expect(pipeline.takeNext() == .entry(entry(2))
+        #expect(pipeline.takeNext() == .entry(entry(2)))
     }
 
     @Test("Nothing is handed out after the translator failed")
@@ -76,7 +76,7 @@ struct TranslationPipelineTests {
         pipeline.setReadiness(.preparing)
         #expect(pipeline.takeNext() == nil)
         pipeline.setReadiness(.ready)
-        #expect(pipeline.takeNext() == .entry(entry(1))
+        #expect(pipeline.takeNext() == .entry(entry(1)))
     }
 
     // MARK: Speech in progress
@@ -166,6 +166,6 @@ struct TranslationPipelineTests {
         pipeline.setReadiness(.ready)
         #expect(pipeline.takeNext() == nil)
         pipeline.settle(entry(1))
-        #expect(pipeline.takeNext() == .entry(entry(1))
+        #expect(pipeline.takeNext() == .entry(entry(1)))
     }
 }
