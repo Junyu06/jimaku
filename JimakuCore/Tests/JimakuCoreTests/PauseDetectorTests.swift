@@ -104,4 +104,21 @@ struct PauseDetectorTests {
         #expect(whole.take(audio).count == 3)
         #expect(pauses(in: batches).filter { $0 }.count == 3)
     }
+
+    @Test("A recognizer that has heard into the quiet of a pause has all the speech before it")
+    func heardIntoTheQuiet() {
+        // What a device showed during a broadcast: with the audio up to a pause
+        // handed over, the recognizer's range stopped 0.093 s short of it, and
+        // once 0.112 s short, for as long as nothing more was handed over.
+        #expect(PauseDetector.hasSpeech(before: 7.26, heardTo: 7.167))
+        #expect(PauseDetector.hasSpeech(before: 5.34, heardTo: 5.228))
+        #expect(PauseDetector.hasSpeech(before: 5.34, heardTo: 5.34))
+    }
+
+    @Test("A recognizer that has not reached the quiet of a pause may lack speech before it")
+    func notYetIntoTheQuiet() {
+        // The quiet is only known to have lasted `pauseInLongSpeech`.
+        #expect(!PauseDetector.hasSpeech(before: 5.34, heardTo: 5.34 - PauseDetector.pauseInLongSpeech))
+        #expect(!PauseDetector.hasSpeech(before: 5.34, heardTo: 4))
+    }
 }
