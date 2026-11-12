@@ -21,4 +21,15 @@ AGENTS.local.md
 .claude/
 .env
 .env.*
+!.env.example
 *.xcconfig.local
+.codex/
+
+# Signing and distribution material (never committed)
+*.p12
+*.p8
+*.cer
+*.mobileprovision
+*.provisionprofile
+ExportOptions.plist
+Secrets.xcconfig

@@ -1,12 +1,10 @@
 # Jimaku
 
-Live translated captions for whatever is playing on your iPhone or iPad.
+> **Status: not built yet.** This repository holds the plan only. Nothing described here has been implemented or tested on a device. This note is updated as each step is verified on real hardware.
 
-Jimaku (字幕, Japanese for "subtitles") listens to the audio of other apps, turns the speech into text, translates it, and shows the result in a floating window on top of the app you are watching. Everything runs on the device with Apple's built-in frameworks: no account, no server, no subscription.
+Jimaku (字幕, Japanese for "subtitles") is a planned iPhone and iPad app for live translated captions over whatever is playing on the device.
 
-## Status
-
-**Not built yet.** This repository currently holds the plan only. Nothing below has been implemented or tested on a device. This section will be updated as each step is verified on real hardware.
+The plan: it listens to the audio of other apps, turns the speech into text, translates it, and shows the result in a floating window on top of the app being watched. Everything is meant to run on the device with Apple's built-in frameworks: no account, no server, no subscription.
 
 ## How it is meant to work
 
@@ -43,8 +41,10 @@ Planned use:
 - Two caption lines by default (original and translation), adjustable.
 - A line is translated once the recognizer has settled on it.
 - A switch between two translation engines: Translation framework language packs, and the on-device Apple Intelligence model.
+- A log of the current session's captions, readable in the app.
+- Closing the floating window ends the session, and also stops the screen broadcast if the system allows the app to do so.
 
-Not in the first version: transcript history, accounts, export, App Store distribution, automatic language detection.
+Not in the first version: other languages, automatic language detection, accounts, export, App Store distribution.
 
 ## Known limits
 
