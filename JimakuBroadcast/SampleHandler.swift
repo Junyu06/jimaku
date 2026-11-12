@@ -23,31 +23,43 @@ final class SampleHandler: RPBroadcastSampleHandler {
             finishBroadcastWithError(Self.error("Jimaku 打不开共享的音频缓冲。"))
             return
         }
-        ring.isStopRequested = false
+        // Only the app decides whether audio is wanted. Without a caption session
+        // there is nobody to listen, so do not keep the screen broadcast running.
+        guard ring.isCaptureWanted else {
+            finishBroadcastWithError(Self.error("请先在 Jimaku 里点「开始」，再开始录屏。"))
+            return
+        }
+        ring.heartbeat()
         ring.isBroadcasting = true
         self.ring = ring
     }
 
     override func broadcastFinished() {
         ring?.isBroadcasting = false
+        ring = nil
     }
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
         guard let ring else { return }
 
-        // The app cannot end a system broadcast itself, so it asks through the ring.
-        if ring.isStopRequested {
-            ring.isStopRequested = false
+        // The app cannot end a system broadcast itself, so it withdraws its wish for
+        // audio and the extension ends the broadcast.
+        guard ring.isCaptureWanted else {
             ring.isBroadcasting = false
             self.ring = nil
             finishBroadcastWithError(Self.error("字幕已停止。"))
             return
         }
 
+        // Any buffer, audio or not, shows the app that the extension is alive.
+        ring.heartbeat()
+
         guard sampleBufferType == .audioApp, let converted = convert(sampleBuffer),
             let samples = converted.int16ChannelData
         else { return }
-        ring.write(UnsafeBufferPointer(start: samples[0], count: Int(converted.frameLength)))
+        // If the app holds the ring at this instant, drop this buffer rather than
+        // make the broadcast wait.
+        _ = ring.tryWrite(UnsafeBufferPointer(start: samples[0], count: Int(converted.frameLength)))
     }
 
     /// Converts a buffer from whatever format the system delivers to the ring's

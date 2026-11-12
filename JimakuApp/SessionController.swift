@@ -6,19 +6,24 @@ import os
 /// Runs a caption session: floats the window, reads the audio the broadcast
 /// extension captured, sends it to speech recognition, translates what was said,
 /// and shows both.
+///
+/// The rules live in JimakuCore: `CaptionSession` for the lifecycle, `Generation` for
+/// telling stale asynchronous results from current ones, `TranslationPipeline` for
+/// what gets translated when, and `CaptionPlaceholder` for what to say while there
+/// is no caption. This class connects them to the system.
 @MainActor
 @Observable
 final class SessionController {
     private(set) var session = CaptionSession()
 
-    /// A message for the user when something went wrong. Nil when all is well.
-    private(set) var notice: String?
-
     /// What is known about the incoming audio while a session runs.
-    private(set) var audioStatus: AudioMonitor.Status = .notBroadcasting
+    private(set) var audioStatus: AudioAvailability = .notBroadcasting
 
     /// What has been said in this session.
     private(set) var transcript = Transcript()
+
+    /// A message for the user when something went wrong. Nil when all is well.
+    var notice: String? { windowNotice ?? recognitionNotice ?? translationNotice }
 
     /// The language spoken in what the user is watching.
     var language: SourceLanguage {
@@ -39,7 +44,6 @@ final class SessionController {
         didSet {
             UserDefaults.standard.set(style.textSize.rawValue, forKey: Self.textSizeKey)
             UserDefaults.standard.set(style.mode.rawValue, forKey: Self.modeKey)
-            window.show(style: style)
             refreshWindow()
         }
     }
@@ -51,28 +55,39 @@ final class SessionController {
     private static let textSizeKey = "captionTextSize"
     private static let modeKey = "captionMode"
 
-    private let audio = AudioMonitor()
-    private let recognizer: any SpeechRecognizing
-    private let languagePackTranslator: any Translating
-    private let appleIntelligenceTranslator: any Translating = AppleIntelligenceTranslator()
-    private var isRecognizerReady = false
-    private var isTranslatorReady = false
-    private var backlog = TranslationBacklog()
-    private var audioTask: Task<Void, Never>?
-    private var recognitionTask: Task<Void, Never>?
-    private var translationTask: Task<Void, Never>?
-    private var watchdogTask: Task<Void, Never>?
-    private let log = Logger(subsystem: "Jimaku", category: "session")
-
     /// How long the caption window may take to appear or to close before the session
     /// stops waiting for it.
     private static let windowPatience: Duration = .seconds(5)
 
+    private let audio = AudioMonitor()
+    private let recognizer: any SpeechRecognizing
+    private let languagePackSource: any TranslatorSource
+    private let appleIntelligenceSource: any TranslatorSource = AppleIntelligenceSource()
+
+    private var windowNotice: String?
+    private var recognitionNotice: String?
+    private var translationNotice: String?
+
+    private var recognition: CaptionPlaceholder.Readiness = .preparing
+    private var pipeline = TranslationPipeline()
+    private var translator: (any PreparedTranslator)?
+
+    /// Current for the running session; stale once it ends.
+    private var sessionGeneration = Generation()
+    /// Current for the translator being prepared or in use; stale once the engine
+    /// changes or the session ends.
+    private var translatorGeneration = Generation()
+    private var translatorToken: Generation.Token?
+
+    private var audioTask: Task<Void, Never>?
+    private var recognitionTask: Task<Void, Never>?
+    private var recognizerStopTask: Task<Void, Never>?
+    private var watchdogTask: Task<Void, Never>?
+    private let log = Logger(subsystem: "Jimaku", category: "session")
+
     init() {
-        language =
-            UserDefaults.standard.string(forKey: Self.languageKey).flatMap(SourceLanguage.init(rawValue:))
-            ?? .english
         let defaults = UserDefaults.standard
+        language = defaults.string(forKey: Self.languageKey).flatMap(SourceLanguage.init(rawValue:)) ?? .english
         engine = defaults.string(forKey: Self.engineKey).flatMap(TranslationEngine.init(rawValue:)) ?? .languagePack
         style = CaptionStyle(
             textSize: defaults.string(forKey: Self.textSizeKey).flatMap(CaptionStyle.TextSize.init(rawValue:))
@@ -82,10 +97,10 @@ final class SessionController {
         )
         #if targetEnvironment(simulator)
             recognizer = ScriptedSpeechRecognizer()
-            languagePackTranslator = ScriptedTranslator()
+            languagePackSource = ScriptedSource()
         #else
             recognizer = SystemSpeechRecognizer()
-            languagePackTranslator = LanguagePackTranslator()
+            languagePackSource = LanguagePackSource()
         #endif
     }
 
@@ -100,9 +115,11 @@ final class SessionController {
         audioStatus = audio.status
     }
 
+    // MARK: Starting and stopping
+
     func performPrimaryAction() {
         if session.primaryAction == .start, session.canPerformPrimaryAction, !window.isSupported {
-            notice = "这台设备不支持画中画，悬浮窗开不了。"
+            windowNotice = "这台设备不支持画中画，悬浮窗开不了。"
             return
         }
         let action = session.performPrimaryAction()
@@ -115,11 +132,17 @@ final class SessionController {
     }
 
     private func begin() {
-        notice = nil
+        windowNotice = nil
+        recognitionNotice = nil
+        translationNotice = nil
         transcript.reset()
+        pipeline.reset()
+        recognition = .preparing
+        let token = sessionGeneration.advance()
+        audio.beginCapture()
         refreshWindow()
-        startAudio()
-        startRecognition()
+        startAudio(for: token)
+        startRecognition(for: token)
         prepareTranslation()
         window.float()
         // If the window has not appeared after a while, give up instead of leaving
@@ -129,7 +152,7 @@ final class SessionController {
             controller.session.windowFailedToStart()
             controller.endSession()
             controller.window.close()
-            controller.notice = "悬浮窗没能打开。请留在 Jimaku 里再点一次开始。"
+            controller.windowNotice = "悬浮窗没能打开。请留在 Jimaku 里再点一次开始。"
         }
     }
 
@@ -154,7 +177,7 @@ final class SessionController {
         session.windowFailedToStart()
         guard wasActive else { return }
         endSession()
-        notice = "悬浮窗没能打开：\(error.localizedDescription)"
+        windowNotice = "悬浮窗没能打开：\(error.localizedDescription)"
     }
 
     private func windowDidClose() {
@@ -166,7 +189,7 @@ final class SessionController {
             // The window went away before it ever appeared, which happens when a
             // start follows a stop too closely. Say so instead of ending silently.
             endSession()
-            notice = "悬浮窗没能打开，请再点一次开始。"
+            windowNotice = "悬浮窗没能打开，请再点一次开始。"
         case .running:
             // The user or the system closed the window while the session was running.
             endSession()
@@ -174,6 +197,211 @@ final class SessionController {
             break
         }
     }
+
+    /// Stops everything a session started. Results that arrive afterwards belong to
+    /// stale generations and are ignored.
+    private func endSession() {
+        sessionGeneration.invalidate()
+        translatorGeneration.invalidate()
+        translatorToken = nil
+        translator = nil
+        pipeline.reset()
+        recognition = .preparing
+
+        audioTask?.cancel()
+        audioTask = nil
+        recognitionTask?.cancel()
+        recognitionTask = nil
+
+        // Stops run one after another, and the next start waits for the last one.
+        let recognizer = recognizer
+        let previousStop = recognizerStopTask
+        recognizerStopTask = Task {
+            await previousStop?.value
+            await recognizer.stop()
+        }
+
+        audio.endCapture()
+        #if targetEnvironment(simulator)
+            audio.endSimulatedBroadcast()
+        #endif
+        window.show(audioLevel: nil)
+        audioStatus = audio.status
+    }
+
+    // MARK: Audio
+
+    /// Reads the shared ring ten times a second, shows the level, and passes the
+    /// samples on to speech recognition.
+    private func startAudio(for token: Generation.Token) {
+        audioTask?.cancel()
+        audioTask = Task { [weak self] in
+            let interval = 0.1
+            var elapsed = 0.0
+            while !Task.isCancelled {
+                guard let self, self.sessionGeneration.isCurrent(token) else { return }
+                #if targetEnvironment(simulator)
+                    self.audio.writeSimulatedAudio(elapsed: elapsed, duration: interval)
+                #endif
+                let samples = self.audio.readNewSamples()
+                let status = self.audio.status
+                if status != self.audioStatus {
+                    self.audioStatus = status
+                    self.refreshWindow()
+                }
+                let hasAudio = status == .receiving || status == .stalled
+                self.window.show(audioLevel: hasAudio ? AudioLevel.meter(for: samples) : nil)
+                if self.recognition == .ready {
+                    self.recognizer.append(samples)
+                }
+                elapsed += interval
+                try? await Task.sleep(for: .seconds(interval))
+            }
+        }
+    }
+
+    // MARK: Recognition
+
+    private func startRecognition(for token: Generation.Token) {
+        recognitionTask?.cancel()
+        let language = language
+        let previousStop = recognizerStopTask
+        recognitionTask = Task { [weak self] in
+            // Let the previous session's recognizer finish shutting down first.
+            await previousStop?.value
+            guard let self, self.sessionGeneration.isCurrent(token) else { return }
+            do {
+                let updates = try await self.recognizer.start(language: language)
+                guard self.sessionGeneration.isCurrent(token) else { return }
+                self.recognition = .ready
+                self.refreshWindow()
+                for try await update in updates {
+                    guard self.sessionGeneration.isCurrent(token) else { return }
+                    if let settled = self.transcript.apply(update) {
+                        self.pipeline.settle(settled)
+                        self.pump()
+                    }
+                    self.refreshWindow()
+                }
+                // The recognizer stopped on its own while the session is still running.
+                guard self.sessionGeneration.isCurrent(token) else { return }
+                self.recognition = .failed
+                self.recognitionNotice = "语音识别停了。请点停止，再重新开始。"
+                self.refreshWindow()
+            } catch {
+                guard self.sessionGeneration.isCurrent(token), !(error is CancellationError) else { return }
+                self.recognition = .failed
+                self.recognitionNotice = "语音识别出错：\(error.localizedDescription)"
+                self.refreshWindow()
+            }
+        }
+    }
+
+    // MARK: Translation
+
+    /// Gets a translator for the current engine and language. If that fails, the
+    /// session carries on with original-language captions and tells the user why.
+    private func prepareTranslation() {
+        let token = translatorGeneration.advance()
+        translatorToken = token
+        translator = nil
+        translationNotice = nil
+        pipeline.setReadiness(.preparing)
+        refreshWindow()
+
+        let source = source(for: engine)
+        let language = language
+        Task { [weak self] in
+            do {
+                let prepared = try await source.prepare(from: language)
+                guard let self, self.translatorGeneration.isCurrent(token) else { return }
+                self.translator = prepared
+                self.pipeline.setReadiness(.ready)
+                self.refreshWindow()
+                self.pump()
+            } catch {
+                guard let self, self.translatorGeneration.isCurrent(token) else { return }
+                self.pipeline.setReadiness(.failed)
+                self.translationNotice = error.localizedDescription
+                self.refreshWindow()
+            }
+        }
+    }
+
+    private func source(for engine: TranslationEngine) -> any TranslatorSource {
+        switch engine {
+        case .languagePack: languagePackSource
+        case .appleIntelligence: appleIntelligenceSource
+        }
+    }
+
+    /// Sends the next waiting sentence to the translator, if the pipeline allows it.
+    private func pump() {
+        guard let translator, let token = translatorToken, let entry = pipeline.takeNext() else { return }
+        Task { [weak self] in
+            let result: Result<String, Error>
+            do {
+                result = .success(try await translator.translate(entry.original))
+            } catch {
+                result = .failure(error)
+            }
+            // The engine changed or the session ended while this was being translated.
+            guard let self, self.translatorGeneration.isCurrent(token) else { return }
+            self.pipeline.finishCurrent()
+            switch result {
+            case .success(let translation):
+                self.translationNotice = nil
+                self.transcript.setTranslation(translation, for: entry.id)
+                self.refreshWindow()
+            case .failure(let error):
+                self.translationNotice = "翻译出错：\(error.localizedDescription)"
+            }
+            self.pump()
+        }
+    }
+
+    // MARK: The window's content
+
+    /// Shows the current captions, or one line saying what the session is waiting
+    /// for when there are none yet.
+    private func refreshWindow() {
+        // Translation-only makes no sense when translation cannot run.
+        let mode = style.mode.effective(translationAvailable: pipeline.isTranslationAvailable)
+        window.show(style: CaptionStyle(textSize: style.textSize, mode: mode))
+
+        // Outside a session the window keeps its preview caption.
+        guard session.isActive else { return }
+        let lines = transcript.currentLines
+        if lines.rows(in: mode).isEmpty {
+            let placeholder = CaptionPlaceholder.choose(
+                recognition: recognition,
+                audio: audioStatus,
+                translation: pipeline.readiness,
+                mode: mode,
+                hasSpeech: !transcript.entries.isEmpty || !transcript.pending.isEmpty
+            )
+            // The waiting line goes in the translation slot so it shows in both display modes.
+            window.show(CaptionLines(original: "", translation: text(for: placeholder)))
+        } else {
+            window.show(lines)
+        }
+    }
+
+    private func text(for placeholder: CaptionPlaceholder) -> String {
+        switch placeholder {
+        case .recognitionFailed: "语音识别没有启动"
+        case .preparingRecognition: "正在准备语音识别…"
+        case .audioUnavailable: "收不到声音"
+        case .waitingForBroadcast: "等待录屏开始"
+        case .noSound: "暂时没有声音"
+        case .listening: "正在听…"
+        case .preparingTranslation: "正在准备翻译…"
+        case .translating: "正在翻译…"
+        case .translationUnavailable: "翻译用不了"
+        }
+    }
+
+    // MARK: Helpers
 
     /// Records a lifecycle event in the system log, to diagnose a session on a device.
     private func trace(_ message: String) {
@@ -187,159 +415,6 @@ final class SessionController {
             try? await Task.sleep(for: Self.windowPatience)
             guard !Task.isCancelled, let self else { return }
             check(self)
-        }
-    }
-
-    private func endSession() {
-        audioTask?.cancel()
-        audioTask = nil
-        recognitionTask?.cancel()
-        recognitionTask = nil
-        translationTask?.cancel()
-        translationTask = nil
-        backlog.removeAll()
-        isRecognizerReady = false
-        isTranslatorReady = false
-        let recognizer = recognizer
-        Task { await recognizer.stop() }
-        audio.requestBroadcastStop()
-        #if targetEnvironment(simulator)
-            audio.endSimulatedBroadcast()
-        #endif
-        window.show(audioLevel: nil)
-        audioStatus = audio.status
-    }
-
-    /// Reads the shared ring ten times a second, shows the level, and passes the
-    /// samples on to speech recognition.
-    private func startAudio() {
-        audioTask?.cancel()
-        audio.skipToNow()
-        audioTask = Task { [weak self] in
-            let interval = 0.1
-            var elapsed = 0.0
-            while !Task.isCancelled {
-                guard let self else { return }
-                #if targetEnvironment(simulator)
-                    self.audio.writeSimulatedAudio(elapsed: elapsed, duration: interval)
-                #endif
-                let samples = self.audio.readNewSamples()
-                let status = self.audio.status
-                if status != self.audioStatus {
-                    self.audioStatus = status
-                    self.refreshWindow()
-                }
-                let hasAudio = status == .receiving || status == .stalled
-                self.window.show(audioLevel: hasAudio ? AudioLevel.meter(for: samples) : nil)
-                if self.isRecognizerReady {
-                    self.recognizer.append(samples)
-                }
-                elapsed += interval
-                try? await Task.sleep(for: .seconds(interval))
-            }
-        }
-    }
-
-    private func startRecognition() {
-        recognitionTask?.cancel()
-        isRecognizerReady = false
-        let language = language
-        recognitionTask = Task { [weak self] in
-            guard let self else { return }
-            do {
-                let updates = try await self.recognizer.start(language: language)
-                guard !Task.isCancelled else { return }
-                self.isRecognizerReady = true
-                self.refreshWindow()
-                for try await update in updates {
-                    if let settled = self.transcript.apply(update) {
-                        self.translate(settled)
-                    }
-                    self.refreshWindow()
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
-                self.isRecognizerReady = false
-                self.notice = "语音识别出错：\(error.localizedDescription)"
-                self.refreshWindow()
-            }
-        }
-    }
-
-    /// Checks that translation can run. If it cannot, the session carries on with
-    /// original-language captions and tells the user why.
-    private func prepareTranslation() {
-        isTranslatorReady = false
-        translationTask?.cancel()
-        translationTask = nil
-        backlog.removeAll()
-        notice = nil
-        let language = language
-        let engine = engine
-        Task { [weak self] in
-            guard let self else { return }
-            do {
-                try await self.translator.prepare(from: language)
-                guard self.session.isActive, self.engine == engine else { return }
-                self.isTranslatorReady = true
-            } catch {
-                guard self.session.isActive, self.engine == engine else { return }
-                self.notice = error.localizedDescription
-            }
-        }
-    }
-
-    private var translator: any Translating {
-        switch engine {
-        case .languagePack: languagePackTranslator
-        case .appleIntelligence: appleIntelligenceTranslator
-        }
-    }
-
-    /// Queues settled speech for translation. One sentence is translated at a time,
-    /// in order; if they pile up, the oldest are skipped.
-    private func translate(_ entry: Transcript.Entry) {
-        guard isTranslatorReady else { return }
-        backlog.add(entry)
-        guard translationTask == nil else { return }
-        translationTask = Task { [weak self] in
-            while let self, !Task.isCancelled, let next = self.backlog.next() {
-                do {
-                    let translation = try await self.translator.translate(next.original)
-                    guard !Task.isCancelled else { return }
-                    self.transcript.setTranslation(translation, for: next.id)
-                    self.refreshWindow()
-                } catch {
-                    guard !Task.isCancelled else { return }
-                    self.notice = "翻译出错：\(error.localizedDescription)"
-                }
-            }
-            self?.translationTask = nil
-        }
-    }
-
-    /// Shows the current captions, or one line saying what the session is waiting
-    /// for when there are none yet.
-    private func refreshWindow() {
-        // Outside a session the window keeps its preview caption.
-        guard session.isActive else { return }
-        let lines = transcript.currentLines
-        if lines.rows(in: style.mode).isEmpty {
-            // The waiting line goes in the translation slot so it shows in both display modes.
-            window.show(CaptionLines(original: "", translation: waitingText))
-        } else {
-            window.show(lines)
-        }
-    }
-
-    private var waitingText: String {
-        if notice != nil { return "语音识别没有启动" }
-        if !isRecognizerReady { return "正在准备语音识别…" }
-        switch audioStatus {
-        case .unavailable: return "收不到声音"
-        case .notBroadcasting: return "等待录屏开始"
-        case .stalled: return "暂时没有声音"
-        case .receiving: return "正在听…"
         }
     }
 }

@@ -1,20 +1,10 @@
 import Foundation
 import JimakuCore
 
-/// The app's end of the shared audio ring: reads what the broadcast extension wrote.
+/// The app's end of the shared audio ring: reads what the broadcast extension wrote
+/// and tells the extension whether a session wants audio.
 @MainActor
 final class AudioMonitor {
-    enum Status: Equatable {
-        /// The shared ring could not be opened, so no audio can ever arrive.
-        case unavailable
-        /// No screen broadcast is running.
-        case notBroadcasting
-        /// A broadcast is running and audio is arriving.
-        case receiving
-        /// A broadcast is running but no audio has arrived for a moment.
-        case stalled
-    }
-
     private let ring: AudioRing?
     private var position: UInt64 = 0
 
@@ -22,28 +12,32 @@ final class AudioMonitor {
         ring = SharedAudio.ringURL().flatMap { try? AudioRing(url: $0) }
     }
 
-    var status: Status {
+    var status: AudioAvailability {
         guard let ring else { return .unavailable }
-        guard ring.isBroadcasting else { return .notBroadcasting }
-        let sinceLastWrite = Date().timeIntervalSinceReferenceDate - ring.lastWriteTime
-        return sinceLastWrite < 1.5 ? .receiving : .stalled
+        return .assess(
+            isBroadcasting: ring.isBroadcasting,
+            lastHeartbeat: ring.lastHeartbeatTime,
+            lastWrite: ring.lastWriteTime,
+            now: Date().timeIntervalSinceReferenceDate
+        )
     }
 
-    /// Skips anything written before now, so a new session starts with fresh audio.
-    func skipToNow() {
-        position = ring?.writeCount ?? 0
+    /// A session wants audio. Anything written before now is skipped.
+    func beginCapture() {
+        guard let ring else { return }
+        ring.isCaptureWanted = true
+        position = ring.writeCount
+    }
+
+    /// No session wants audio. The extension ends the broadcast when it sees this;
+    /// the app has no direct way to stop a system broadcast.
+    func endCapture() {
+        ring?.isCaptureWanted = false
     }
 
     /// The samples that arrived since the last call.
     func readNewSamples() -> [Int16] {
         ring?.read(from: &position, max: AudioRing.sampleRate * 2) ?? []
-    }
-
-    /// Asks the extension to end the screen broadcast. The app has no direct way to
-    /// stop a system broadcast.
-    func requestBroadcastStop() {
-        guard let ring, ring.isBroadcasting else { return }
-        ring.isStopRequested = true
     }
 
     #if targetEnvironment(simulator)

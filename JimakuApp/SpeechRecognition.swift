@@ -45,6 +45,7 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) else {
             throw SpeechRecognitionError.languageNotSupported
         }
+        try Task.checkCancellation()
 
         // Progressive transcription reports guesses while speech is in progress and
         // then a final version, which is what Transcript expects.
@@ -56,6 +57,7 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         {
             try await request.downloadAndInstall()
         }
+        try Task.checkCancellation()
 
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: [transcriber]),
             let converter = PCMConverter(to: format)
@@ -63,7 +65,16 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
 
         let analyzer = SpeechAnalyzer(modules: [transcriber])
         let (inputs, inputContinuation) = AsyncStream<AnalyzerInput>.makeStream()
-        try await analyzer.start(inputSequence: inputs)
+        do {
+            try await analyzer.start(inputSequence: inputs)
+            // The session may have been stopped while this start was in progress.
+            // Nothing has been published yet, so clean up what was just created.
+            try Task.checkCancellation()
+        } catch {
+            inputContinuation.finish()
+            await analyzer.cancelAndFinishNow()
+            throw error
+        }
 
         let (updates, updatesContinuation) = AsyncThrowingStream<RecognitionUpdate, Error>.makeStream()
         resultsTask = Task {
@@ -90,13 +101,19 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
     }
 
     func stop() async {
+        // Take everything first and only then wait, so that a start which runs
+        // while this is waiting keeps the resources it creates.
+        let analyzer = analyzer
+        let input = input
+        let resultsTask = resultsTask
+        self.analyzer = nil
+        self.input = nil
+        self.converter = nil
+        self.resultsTask = nil
+
         input?.finish()
-        input = nil
-        converter = nil
         resultsTask?.cancel()
-        resultsTask = nil
         await analyzer?.cancelAndFinishNow()
-        analyzer = nil
     }
 }
 

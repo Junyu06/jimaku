@@ -138,7 +138,7 @@ struct CaptionFrameRenderer {
                 ).height
             )
             if textHeight <= rect.height || fontSize <= smallest { break }
-            fontSize -= 4
+            fontSize = max(fontSize - 4, smallest)
         }
 
         let drawHeight = min(textHeight, rect.height)
