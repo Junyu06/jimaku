@@ -1,51 +1,69 @@
 import JimakuCore
 import Testing
 
-/// The recognizer may rewrite text it has already reported. These cases were found in
-/// review by probing the transcript with such rewrites.
-@Suite("Transcript under revision")
-struct TranscriptRevisionTests {
-    private func originals(_ updates: [RecognitionUpdate]) -> [String] {
+/// The recognizer may rewrite text it has already reported, including text whose
+/// sentences were already handed out for translation. Until a stretch of speech is
+/// final, its sentences follow the recognizer's latest guess, so nothing can be lost
+/// or repeated. Most sequences here were found in review by probing.
+@Suite("Transcript follows the recognizer's latest guess")
+struct TranscriptFollowsLatestGuessTests {
+    /// Rewrites of one stretch, each ending in a final result.
+    static let stretches: [[String]] = [
+        ["Hello. world", "Hello world", "Hello world."],
+        ["One. Two. Three", "One two. Three", "One two. Three. Four", "One two. Three. Four."],
+        ["One two. Three", "One. Two. Three", "One. Two. Three."],
+        ["It costs 3.", "It costs 3.5 dollars", "It costs 3.5 dollars."],
+        ["そうです。はい", "そうです。はい、そうです。次", "そうです。はい、そうです。次です。"],
+        ["そうです。はい", "そうですはい", "そうですはい。"],
+        ["そうです。はい", "そう。はい", "そう。はい。"],
+        ["Good morning. Hello", "Hi. Hello", "Hi. Hello."],
+        ["Hi. world", "Hello. world", "Hello. world."],
+        ["Good morning. Hello", "Hi. Hello there. How", "Hi. Hello there. How are you."],
+        ["そうです。は", "そう。は", "そう。はい。"],
+        ["はい。そう", "そうですね。そう", "そうですね。そう。"],
+        ["Hi. go", "You go. go now", "You go. go now."],
+        ["Hi. he", "They agreed. he", "They agreed. he."],
+        ["Good morning.", "Hi. Hello", "Hi. Hello."],
+        ["そうです。はい", "そう。ええ", "そう。ええ。"],
+        ["Good morning. Hello", "Good", "Hi. Hello", "Hi. Hello."],
+    ]
+
+    private func sentences(of text: String) -> [String] {
+        let split = CaptionText.sentences(in: text)
+        return split.remainder.isEmpty ? split.complete : split.complete + [split.remainder]
+    }
+
+    @Test("After every guess, the sentences and the speech in progress are exactly that guess", arguments: stretches)
+    func partialsMatchTheGuess(stretch: [String]) {
         var transcript = Transcript()
-        for update in updates { transcript.apply(update) }
-        return transcript.entries.map(\.original)
+        for guess in stretch.dropLast() {
+            transcript.apply(.partial(guess))
+            let split = CaptionText.sentences(in: guess)
+            #expect(transcript.entries.map(\.original) == split.complete)
+            #expect(transcript.pending == split.remainder)
+        }
     }
 
-    @Test("Removing a sentence boundary does not lose the words after it")
-    func boundaryRemoved() {
-        #expect(originals([.partial("Hello. world"), .partial("Hello world"), .final("Hello world.")]) == ["Hello.", "world."])
-    }
-
-    @Test("While a boundary is being removed, the row does not repeat settled words")
-    func boundaryRemovedRow() {
+    @Test("After the final result, the sentences are exactly the final text", arguments: stretches)
+    func finalMatchesTheText(stretch: [String]) {
         var transcript = Transcript()
-        transcript.apply(.partial("Hello. world"))
-        transcript.apply(.partial("Hello world"))
-        #expect(transcript.currentLines.original == "Hello. world")
+        for guess in stretch.dropLast() { transcript.apply(.partial(guess)) }
+        transcript.apply(.final(stretch.last!))
+        #expect(transcript.entries.map(\.original) == sentences(of: stretch.last!))
+        #expect(transcript.pending.isEmpty)
     }
 
-    @Test("Merging two settled sentences does not lose the one that follows")
-    func sentencesMerged() {
-        let result = originals([
-            .partial("One. Two. Three"),
-            .partial("One two. Three"),
-            .partial("One two. Three. Four"),
-            .final("One two. Three. Four."),
-        ])
-        #expect(result == ["One.", "Two.", "Three.", "Four."])
+    @Test("A finished stretch is not touched by the next one", arguments: stretches)
+    func earlierStretchIsKept(stretch: [String]) {
+        var transcript = Transcript()
+        transcript.apply(.final("Earlier one. Earlier two."))
+        for guess in stretch.dropLast() { transcript.apply(.partial(guess)) }
+        transcript.apply(.final(stretch.last!))
+        #expect(transcript.entries.map(\.original) == ["Earlier one.", "Earlier two."] + sentences(of: stretch.last!))
+        #expect(transcript.entries.map(\.id) == Array(0..<transcript.entries.count))
     }
 
-    @Test("Splitting a settled sentence does not settle part of it again")
-    func sentenceSplit() {
-        #expect(originals([.partial("One two. Three"), .partial("One. Two. Three"), .final("One. Two. Three.")]) == ["One two.", "Three."])
-    }
-
-    @Test("A number still being spoken is not cut at its decimal point")
-    func decimalInProgress() {
-        #expect(originals([.partial("It costs 3."), .partial("It costs 3.5 dollars"), .final("It costs 3.5 dollars.")]) == ["It costs 3.5 dollars."])
-    }
-
-    @Test("A guess that shrinks and grows again settles nothing twice")
+    @Test("A guess that shrinks and grows again keeps following it")
     func shrinkThenGrow() {
         var transcript = Transcript()
         transcript.apply(.partial("One. Two"))
@@ -55,51 +73,75 @@ struct TranscriptRevisionTests {
         #expect(transcript.entries.map(\.original) == ["One."])
         #expect(transcript.pending == "Two again")
     }
-
-    @Test("Japanese text rewritten before the settled point keeps what follows")
-    func japaneseRevision() {
-        let result = originals([.partial("そうです。はい"), .partial("そうです。はい、そうです。次"), .final("そうです。はい、そうです。次です。")])
-        #expect(result == ["そうです。", "はい、そうです。", "次です。"])
-    }
 }
 
-/// More rewrites found in the second review: the settled part itself changes length.
-@Suite("Transcript when the settled part is rewritten")
-struct TranscriptSettledPartRewrittenTests {
-    private func originals(_ updates: [RecognitionUpdate]) -> [String] {
+@Suite("Translations under revision")
+struct TranslationsUnderRevisionTests {
+    @Test("Only new or rewritten sentences are handed out for translation")
+    func onlyChangedSentencesAreHandedOut() {
         var transcript = Transcript()
-        for update in updates { transcript.apply(update) }
-        return transcript.entries.map(\.original)
+        #expect(transcript.apply(.partial("One. Two")).map(\.original) == ["One."])
+        #expect(transcript.apply(.partial("One. Two. Three")).map(\.original) == ["Two."])
+        #expect(transcript.apply(.partial("One. Two. Three is")).isEmpty)
+        #expect(transcript.apply(.partial("One. Too. Three is")).map(\.original) == ["Too."])
+        #expect(transcript.apply(.final("One. Too. Three is here.")).map(\.original) == ["Three is here."])
     }
 
-    @Test("Japanese: a removed sentence mark does not cost the next character")
-    func japaneseMarkRemoved() {
-        #expect(originals([.partial("そうです。はい"), .partial("そうですはい"), .final("そうですはい。")]) == ["そうです。", "はい。"])
+    @Test("A sentence that did not change keeps its translation")
+    func unchangedSentenceKeepsTranslation() {
+        var transcript = Transcript()
+        let first = transcript.apply(.partial("One. Two"))[0]
+        transcript.setTranslation("一。", for: first)
+        transcript.apply(.partial("One. Two. Three"))
+        transcript.apply(.final("One. Two. Three."))
+        #expect(transcript.entries[0].translation == "一。")
     }
 
-    @Test("Japanese: a shortened settled sentence does not cost what follows")
-    func japaneseSettledShortened() {
-        #expect(originals([.partial("そうです。はい"), .partial("そう。はい"), .final("そう。はい。")]) == ["そうです。", "はい。"])
+    @Test("A rewritten sentence loses its old translation")
+    func rewrittenSentenceLosesTranslation() {
+        var transcript = Transcript()
+        let first = transcript.apply(.partial("Won. Two"))[0]
+        transcript.setTranslation("赢了。", for: first)
+        transcript.apply(.partial("One. Two"))
+        #expect(transcript.entries[0].original == "One.")
+        #expect(transcript.entries[0].translation == nil)
     }
 
-    @Test("English: a shortened settled sentence does not cost what follows")
-    func englishSettledShortened() {
-        #expect(originals([.partial("Good morning. Hello"), .partial("Hi. Hello"), .final("Hi. Hello.")]) == ["Good morning.", "Hello."])
+    @Test("A translation that arrives for a sentence since rewritten is ignored")
+    func lateTranslationOfRewrittenSentence() {
+        var transcript = Transcript()
+        let old = transcript.apply(.partial("Won. Two"))[0]
+        transcript.apply(.partial("One. Two"))
+        transcript.setTranslation("赢了。", for: old)
+        #expect(transcript.entries[0].translation == nil)
     }
 
-    @Test("English: a lengthened settled sentence is not settled again")
-    func englishSettledLengthened() {
-        #expect(originals([.partial("Hi. world"), .partial("Hello. world"), .final("Hello. world.")]) == ["Hi.", "world."])
+    @Test("A sentence pushed to a later position by a rewrite keeps its translation")
+    func movedSentenceKeepsTranslation() {
+        var transcript = Transcript()
+        let hello = transcript.apply(.partial("Hello there. How"))[0]
+        transcript.setTranslation("你好。", for: hello)
+        let handedOut = transcript.apply(.partial("Well. Hello there. How"))
+        #expect(handedOut.map(\.original) == ["Well."])
+        #expect(transcript.entries.map(\.translation) == [nil, "你好。"])
     }
 
-    @Test("A rewrite of the settled part followed by more speech keeps going from the right place")
-    func rewriteThenGrowth() {
-        let result = originals([
-            .partial("Good morning. Hello"),
-            .partial("Hi. Hello there. How"),
-            .final("Hi. Hello there. How are you."),
-        ])
-        #expect(result == ["Good morning.", "Hello there.", "How are you."])
+    @Test("A translation arriving after its sentence moved still reaches it")
+    func lateTranslationOfMovedSentence() {
+        var transcript = Transcript()
+        let hello = transcript.apply(.partial("Hello there. How"))[0]
+        transcript.apply(.partial("Well. Hello there. How"))
+        transcript.setTranslation("你好。", for: hello)
+        #expect(transcript.entries.map(\.translation) == [nil, "你好。"])
+    }
+
+    @Test("Once a stretch is final its translations are no longer revised")
+    func finalStretchKeepsTranslations() {
+        var transcript = Transcript()
+        let first = transcript.apply(.final("One."))[0]
+        transcript.setTranslation("一。", for: first)
+        transcript.apply(.partial("Two. Three"))
+        #expect(transcript.entries[0] == Transcript.Entry(id: 0, original: "One.", translation: "一。"))
     }
 }
 
