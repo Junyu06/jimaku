@@ -251,3 +251,87 @@ struct TranslationPipelineReviewTests {
         #expect(pipeline.isTranslationAvailable)
     }
 }
+
+/// Delivery cases found in the third review.
+@Suite("Translation delivery")
+struct TranslationDeliveryTests {
+    @Test("Two identical sentences in one stretch both get the one translation")
+    func duplicatesShareTranslation() {
+        var transcript = Transcript()
+        let handedOut = transcript.apply(.final("Yes. Yes."))
+        #expect(handedOut.count == 1)
+        transcript.setTranslation("是。", for: handedOut[0])
+        #expect(transcript.entries.map(\.translation) == ["是。", "是。"])
+    }
+
+    @Test("A translation that arrives after the stretch is final follows its sentence to its new place")
+    func lateTranslationAfterFinal() {
+        var transcript = Transcript()
+        let hello = transcript.apply(.partial("Hello there. How"))[0]
+        transcript.apply(.final("Well. Hello there. How are you."))
+        transcript.setTranslation("你好。", for: hello)
+        #expect(transcript.entries.map(\.translation) == [nil, "你好。", nil])
+    }
+
+    @Test("A sentence that moved far still gets its translation after the stretch is final")
+    func lateTranslationAfterLongMove() {
+        var transcript = Transcript()
+        let target = transcript.apply(.partial("Target. x"))[0]
+        let before = (1...12).map { "Sentence \($0)." }.joined(separator: " ")
+        transcript.apply(.final(before + " Target."))
+        transcript.setTranslation("目标。", for: target)
+        #expect(transcript.entries.last?.translation == "目标。")
+        #expect(transcript.entries.dropLast().allSatisfy { $0.translation == nil })
+    }
+
+    @Test("A translation is delivered only within the stretch it was made for")
+    func translationStaysInItsStretch() {
+        var transcript = Transcript()
+        let first = transcript.apply(.final("Yes."))[0]
+        let second = transcript.apply(.partial("Yes. More"))[0]
+        #expect(first.stretch != second.stretch)
+        transcript.setTranslation("是。", for: first)
+        #expect(transcript.entries.map(\.translation) == ["是。", nil])
+        transcript.setTranslation("对。", for: second)
+        #expect(transcript.entries.map(\.translation) == ["是。", "对。"])
+    }
+
+    @Test("A translation for a stretch that is final does not land in the stretch after it")
+    func earlierStretchTranslationDoesNotLeak() {
+        var transcript = Transcript()
+        let gone = transcript.apply(.partial("Maybe. x"))[0]
+        transcript.apply(.final("No."))
+        transcript.apply(.partial("Maybe. y"))
+        transcript.setTranslation("也许。", for: gone)
+        #expect(transcript.entries.map(\.translation) == [nil, nil])
+    }
+
+    @Test("After a failed translation the sentence is handed out again on the next update")
+    func failedTranslationIsRetried() {
+        var transcript = Transcript()
+        let one = transcript.apply(.partial("One. Two"))[0]
+        transcript.translationFailed(for: one)
+        #expect(transcript.apply(.partial("One. Two more")).map(\.original) == ["One."])
+    }
+
+    @Test("A sentence that fails once and then succeeds is not handed out a third time")
+    func retriedThenTranslated() {
+        var transcript = Transcript()
+        let one = transcript.apply(.partial("One. Two"))[0]
+        transcript.translationFailed(for: one)
+        let again = transcript.apply(.partial("One. Two more"))[0]
+        transcript.setTranslation("一。", for: again)
+        #expect(transcript.apply(.final("One. Two more.")).map(\.original) == ["Two more."])
+    }
+
+    @Test("A translation for a sentence that is gone is dropped for good")
+    func translationOfVanishedSentenceIsDropped() {
+        var transcript = Transcript()
+        let alpha = transcript.apply(.partial("Alpha. x"))[0]
+        transcript.apply(.partial("Beta. x"))
+        transcript.setTranslation("阿尔法。", for: alpha)
+        let handedOut = transcript.apply(.partial("Alpha. x"))
+        #expect(transcript.entries[0].translation == nil)
+        #expect(handedOut.map(\.original) == ["Alpha."])
+    }
+}
