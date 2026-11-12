@@ -221,6 +221,34 @@ struct ChunkTests {
         #expect(result.spoken == 0)
     }
 
+    @Test("A sentence that is over stays whole, comma and all, where the same words still being said are cut")
+    func finishedSentenceStaysWhole() {
+        // 50 columns: past the limit of 48, within the 72 a finished sentence may have.
+        let text = "昨日は雨が降っていたので、家で本を読んでいました。"
+        #expect(cut(text, complete: true, rules: .japanese).chunks == [text])
+        let unfinished = "昨日は雨が降っていたので、家で本を読んでいました"
+        #expect(cut(unfinished, rules: .japanese).chunks == ["昨日は雨が降っていたので、"])
+    }
+
+    @Test("A sentence that is over but far too long is still cut at its comma")
+    func finishedSentenceTooLong() {
+        let text = "昨日は朝からずっと雨が降っていたので、図書館には行かずに家で古い小説をゆっくり読んでいました。"
+        #expect(
+            cut(text, complete: true, rules: .japanese).chunks
+                == ["昨日は朝からずっと雨が降っていたので、", "図書館には行かずに家で古い小説をゆっくり読んでいました。"])
+    }
+
+    @Test("Finished sentences are still cut from one another")
+    func finishedSentencesApart() {
+        #expect(cut("はい。そうです。行きましょう", complete: true, rules: .japanese).chunks == ["はい。", "そうです。", "行きましょう"])
+    }
+
+    @Test("The room a finished sentence has is one and a half times the limit")
+    func wholeAllowance() {
+        #expect(ChunkRules.japanese.whole == 72)
+        #expect(ChunkRules.english.whole == 108)
+    }
+
     @Test("The pieces and the rest together are the text, with nothing lost or repeated")
     func nothingLost() {
         let text = "このお店もうすぐ閉まるって聞いたんだけど、本当なのかな今日行くの行かないのゆっくり説明してください。先生サンドイッチを見せてもらえますか"
