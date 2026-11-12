@@ -41,6 +41,56 @@ public enum CaptionText {
         return "…" + String(kept).trimmed
     }
 
+    /// Splits text into the sentences that have finished and the unfinished rest.
+    ///
+    /// Live speech can run for a long time before the recognizer calls any of it
+    /// final. A sentence that has reached its ending mark is unlikely to change, so
+    /// it can be treated as settled without waiting.
+    public static func sentences(in text: String) -> (complete: [String], remainder: String) {
+        let characters = Array(text)
+        var complete: [String] = []
+        var start = 0
+        var index = 0
+        while index < characters.count {
+            guard endsSentence(characters, at: index) else {
+                index += 1
+                continue
+            }
+            // Keep repeated ending marks and closing quotes with the sentence.
+            var end = index + 1
+            while end < characters.count, endings.contains(characters[end]) || closers.contains(characters[end]) {
+                end += 1
+            }
+            let sentence = String(characters[start..<end]).trimmed
+            if !sentence.isEmpty { complete.append(sentence) }
+            start = end
+            index = end
+        }
+        return (complete, String(characters[start...]).trimmed)
+    }
+
+    private static let endings: Set<Character> = ["。", "！", "？", "!", "?", "．", "｡", "."]
+    private static let closers: Set<Character> = ["」", "』", "”", "’", "\"", "'", "）", ")"]
+
+    private static func endsSentence(_ characters: [Character], at index: Int) -> Bool {
+        let character = characters[index]
+        guard endings.contains(character) else { return false }
+        guard character == "." else { return true }
+
+        // A period ends a sentence only when something other than text follows it,
+        // which rules out "3.5" and the first period of "U.S.".
+        if index + 1 < characters.count {
+            let next = characters[index + 1]
+            guard next.isWhitespace || closers.contains(next) || endings.contains(next) else { return false }
+        }
+        // A single letter before the period is an initial, as in the "S." of "U.S.".
+        if index >= 1, characters[index - 1].isLetter {
+            let beforeLetter = index >= 2 ? characters[index - 2] : " "
+            if beforeLetter.isWhitespace || beforeLetter == "." { return false }
+        }
+        return true
+    }
+
     private static func width(of character: Character) -> Int {
         guard let scalar = character.unicodeScalars.first?.value else { return 0 }
         switch scalar {

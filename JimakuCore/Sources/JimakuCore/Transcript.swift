@@ -1,18 +1,23 @@
 /// One piece of news from the speech recognizer.
 public enum RecognitionUpdate: Equatable, Sendable {
-    /// The recognizer's current guess for speech still in progress. It will change.
+    /// The recognizer's current guess for all speech it has not finalized yet. It
+    /// replaces the previous guess and will change again.
     case partial(String)
-    /// The recognizer has settled on this text and will not change it.
+    /// The recognizer has settled on this text for that same stretch of speech.
     case final(String)
 }
 
 /// What has been said in a session, and what to show for it right now.
 ///
-/// The recognizer first sends partial guesses that keep changing, then a final
-/// version. Only final text becomes an entry, and only entries are translated:
-/// translating a sentence that is still changing would make the translation flicker.
+/// The recognizer sends guesses that keep changing and, eventually, a final version.
+/// With fast continuous speech "eventually" can be ten seconds or more, far too late
+/// for captions. So a sentence settles as soon as it finishes inside a guess, and is
+/// translated then. The unfinished rest is translated provisionally while it grows.
+///
+/// Both caption rows run on like a ticker: settled sentences followed by the speech
+/// in progress, showing their end.
 public struct Transcript: Equatable, Sendable {
-    /// One settled piece of speech and, once it arrives, its translation.
+    /// One settled sentence and, once it arrives, its translation.
     public struct Entry: Equatable, Sendable, Identifiable {
         public let id: Int
         public var original: String
@@ -28,29 +33,48 @@ public struct Transcript: Equatable, Sendable {
     /// Columns available on the original row before its beginning is cut.
     public static let originalRowWidth = 84
 
-    /// Settled speech, oldest first.
+    /// Columns available on the translation row before its beginning is cut.
+    public static let translationRowWidth = 64
+
+    /// How many settled sentences can appear on a row before the speech in progress.
+    private static let recentEntryCount = 6
+
+    /// Settled sentences, oldest first.
     public private(set) var entries: [Entry] = []
 
-    /// The recognizer's current guess for speech in progress.
+    /// The unfinished end of the speech in progress.
     public private(set) var pending = ""
+
+    /// A provisional translation of `pending`, or of an earlier, shorter version of it.
+    public private(set) var pendingTranslation: String?
+
+    /// The text `pendingTranslation` was made from.
+    private var pendingTranslationSource: String?
+
+    /// How many sentences of the recognizer's current stretch of speech have settled.
+    private var settledInStretch = 0
 
     public init() {}
 
-    /// Takes in a recognizer update. Returns the new entry when the update settled a
-    /// piece of speech, so the caller can send it for translation.
+    /// Takes in a recognizer update. Returns the sentences it settled, oldest first,
+    /// so the caller can send them for translation.
     @discardableResult
-    public mutating func apply(_ update: RecognitionUpdate) -> Entry? {
+    public mutating func apply(_ update: RecognitionUpdate) -> [Entry] {
         switch update {
         case .partial(let text):
-            pending = text
-            return nil
+            let split = CaptionText.sentences(in: text)
+            let settled = settle(split.complete.dropFirst(settledInStretch))
+            settledInStretch = max(settledInStretch, split.complete.count)
+            setPending(split.remainder)
+            return settled
         case .final(let text):
-            pending = ""
-            let settled = text.trimmed
-            guard !settled.isEmpty else { return nil }
-            let entry = Entry(id: entries.count, original: settled, translation: nil)
-            entries.append(entry)
-            return entry
+            // In a final result the unfinished rest is finished too.
+            let split = CaptionText.sentences(in: text)
+            let all = split.remainder.isEmpty ? split.complete : split.complete + [split.remainder]
+            let settled = settle(all.dropFirst(settledInStretch))
+            settledInStretch = 0
+            setPending("")
+            return settled
         }
     }
 
@@ -60,23 +84,66 @@ public struct Transcript: Equatable, Sendable {
         entries[index].translation = text
     }
 
+    /// Offers a provisional translation made from `source`. It is kept only if the
+    /// speech in progress still begins with that text.
+    public mutating func setPendingTranslation(_ translation: String, of source: String) {
+        let text = translation.trimmed
+        guard !text.isEmpty, !source.isEmpty, pending.hasPrefix(source) else { return }
+        pendingTranslation = text
+        pendingTranslationSource = source
+    }
+
     public mutating func reset() {
         self = Transcript()
     }
 
-    /// What the caption window should show now.
-    ///
-    /// The original row follows the speaker: the guess in progress if there is one,
-    /// otherwise the last settled piece. The translation row shows the newest
-    /// translation available, which stays up while the next sentence is spoken so
-    /// there is time to read it.
+    /// What the caption window should show now: the latest settled sentences followed
+    /// by the speech in progress, each row cut to its end.
     public var currentLines: CaptionLines {
-        let speaking = pending.trimmed
-        let original = speaking.isEmpty ? (entries.last?.original ?? "") : speaking
-        let translation = entries.last(where: { $0.translation != nil })?.translation ?? ""
+        let recent = entries.suffix(Self.recentEntryCount)
+        let original = Self.runOn(recent.map(\.original) + [pending])
+        let translation = Self.runOn(recent.compactMap(\.translation) + [pendingTranslation ?? ""])
         return CaptionLines(
             original: CaptionText.tail(of: original, width: Self.originalRowWidth),
-            translation: translation
+            translation: CaptionText.tail(of: translation, width: Self.translationRowWidth)
         )
+    }
+
+    private mutating func settle(_ sentences: some Sequence<String>) -> [Entry] {
+        var settled: [Entry] = []
+        for sentence in sentences {
+            let text = sentence.trimmed
+            guard !text.isEmpty else { continue }
+            let entry = Entry(id: entries.count, original: text, translation: nil)
+            entries.append(entry)
+            settled.append(entry)
+        }
+        return settled
+    }
+
+    private mutating func setPending(_ text: String) {
+        pending = text
+        // A provisional translation survives only while the clause it came from is
+        // still the beginning of the speech in progress.
+        if let source = pendingTranslationSource, !text.hasPrefix(source) {
+            pendingTranslation = nil
+            pendingTranslationSource = nil
+        }
+    }
+
+    /// Joins pieces into running text. A space goes between two pieces only where
+    /// both sides are narrow characters, so English gets spaces and Japanese or
+    /// Chinese does not.
+    private static func runOn(_ pieces: [String]) -> String {
+        var text = ""
+        for piece in pieces.map(\.trimmed) where !piece.isEmpty {
+            if let last = text.last, let first = piece.first,
+                CaptionText.width(of: String(last)) == 1, CaptionText.width(of: String(first)) == 1
+            {
+                text += " "
+            }
+            text += piece
+        }
+        return text
     }
 }
