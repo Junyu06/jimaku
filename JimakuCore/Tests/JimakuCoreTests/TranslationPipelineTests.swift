@@ -19,7 +19,7 @@ struct TranslationPipelineTests {
         var pipeline = TranslationPipeline()
         pipeline.settle(entry(0))
         pipeline.setReadiness(.ready)
-        #expect(pipeline.takeNext()?.id == 0)
+        #expect(pipeline.takeNext() == .entry(entry(0))
     }
 
     @Test("Only one sentence is translated at a time, in order")
@@ -28,10 +28,10 @@ struct TranslationPipelineTests {
         pipeline.setReadiness(.ready)
         pipeline.settle(entry(0))
         pipeline.settle(entry(1))
-        #expect(pipeline.takeNext()?.id == 0)
+        #expect(pipeline.takeNext() == .entry(entry(0))
         #expect(pipeline.takeNext() == nil)
         pipeline.finishCurrent()
-        #expect(pipeline.takeNext()?.id == 1)
+        #expect(pipeline.takeNext() == .entry(entry(1))
         pipeline.finishCurrent()
         #expect(pipeline.takeNext() == nil)
     }
@@ -43,9 +43,9 @@ struct TranslationPipelineTests {
         pipeline.settle(entry(1))
         pipeline.settle(entry(2))
         pipeline.setReadiness(.ready)
-        #expect(pipeline.takeNext()?.id == 1)
+        #expect(pipeline.takeNext() == .entry(entry(1))
         pipeline.finishCurrent()
-        #expect(pipeline.takeNext()?.id == 2)
+        #expect(pipeline.takeNext() == .entry(entry(2))
     }
 
     @Test("Nothing is handed out after the translator failed")
@@ -76,7 +76,83 @@ struct TranslationPipelineTests {
         pipeline.setReadiness(.preparing)
         #expect(pipeline.takeNext() == nil)
         pipeline.setReadiness(.ready)
-        #expect(pipeline.takeNext()?.id == 1)
+        #expect(pipeline.takeNext() == .entry(entry(1))
+    }
+
+    // MARK: Speech in progress
+
+    @Test("Speech in progress is offered for a provisional translation")
+    func pendingIsOffered() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you doing")
+        #expect(pipeline.takeNext() == .pending("How are you doing"))
+    }
+
+    @Test("Settled sentences go before speech in progress")
+    func settledFirst() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you doing")
+        pipeline.settle(entry(0))
+        #expect(pipeline.takeNext() == .entry(entry(0)))
+        pipeline.finishCurrent()
+        #expect(pipeline.takeNext() == .pending("How are you doing"))
+    }
+
+    @Test("The same speech in progress is not translated twice")
+    func pendingNotRepeated() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you doing")
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent()
+        pipeline.offerPending("How are you doing")
+        #expect(pipeline.takeNext() == nil)
+    }
+
+    @Test("Speech in progress is translated again only after it has grown noticeably")
+    func pendingNeedsGrowth() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you")
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent()
+        pipeline.offerPending("How are you d")
+        #expect(pipeline.takeNext() == nil)
+        pipeline.offerPending("How are you doing")
+        #expect(pipeline.takeNext() == .pending("How are you doing"))
+    }
+
+    @Test("A new clause is translated even if it is no longer than the last one")
+    func newClauseIsTranslated() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you doing")
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent()
+        pipeline.offerPending("Fine thanks")
+        #expect(pipeline.takeNext() == .pending("Fine thanks"))
+    }
+
+    @Test("A fragment too short to mean anything is not translated")
+    func shortPendingIsSkipped() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("Ho")
+        #expect(pipeline.takeNext() == nil)
+        pipeline.offerPending("はい")
+        #expect(pipeline.takeNext() == .pending("はい"))
+    }
+
+    @Test("Speech in progress waits its turn like everything else")
+    func pendingWaitsItsTurn() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.settle(entry(0))
+        _ = pipeline.takeNext()
+        pipeline.offerPending("How are you doing")
+        #expect(pipeline.takeNext() == nil)
     }
 
     @Test("Resetting forgets everything and waits for a translator again")
@@ -90,6 +166,6 @@ struct TranslationPipelineTests {
         pipeline.setReadiness(.ready)
         #expect(pipeline.takeNext() == nil)
         pipeline.settle(entry(1))
-        #expect(pipeline.takeNext()?.id == 1)
+        #expect(pipeline.takeNext() == .entry(entry(1))
     }
 }
