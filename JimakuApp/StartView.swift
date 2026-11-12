@@ -2,10 +2,12 @@ import AVFoundation
 import JimakuCore
 import SwiftUI
 
-/// The only screen so far: a preview of the caption window, one button that starts
-/// or stops a session, and the system control that starts the screen broadcast.
+/// The only screen so far: a preview of the caption window, the spoken-language
+/// choice, one button that starts or stops a session, and the system control that
+/// starts the screen broadcast.
 struct StartView: View {
     @State private var controller = SessionController()
+
 
     var body: some View {
         VStack(spacing: 28) {
@@ -13,6 +15,16 @@ struct StartView: View {
                 .aspectRatio(CaptionFrameRenderer.frameSize, contentMode: .fit)
                 .frame(maxWidth: 520)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+            Picker("说话的语言", selection: $controller.language) {
+                ForEach(SourceLanguage.allCases, id: \.self) { language in
+                    Text(name(of: language)).tag(language)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 280)
+            .disabled(controller.session.state == .running)
+            .accessibilityIdentifier("language")
 
             Button {
                 controller.performPrimaryAction()
@@ -60,6 +72,13 @@ struct StartView: View {
         case .notBroadcasting: "还没开始录屏。点下面的圆钮，选 Jimaku，开始直播。"
         case .stalled: "录屏已开始，暂时没有声音。"
         case .receiving: nil
+        }
+    }
+
+    private func name(of language: SourceLanguage) -> String {
+        switch language {
+        case .english: "英语"
+        case .japanese: "日语"
         }
     }
 

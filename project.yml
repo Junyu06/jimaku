@@ -39,6 +39,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
+        NSSpeechRecognitionUsageDescription: Jimaku 把正在播放的声音转成文字，用来显示字幕。
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft

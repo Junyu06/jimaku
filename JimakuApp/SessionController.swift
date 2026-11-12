@@ -1,31 +1,55 @@
+import Foundation
 import JimakuCore
 import Observation
 
-/// Connects the session state in JimakuCore to the floating caption window and to
-/// the audio arriving from the broadcast extension.
+/// Runs a caption session: floats the window, reads the audio the broadcast
+/// extension captured, sends it to speech recognition, and shows the text.
 ///
-/// Captions are scripted demo text for now; recognition and translation are not
-/// connected yet. The audio is only shown as a level meter.
+/// Translation is not connected yet, so captions are in the spoken language.
 @MainActor
 @Observable
 final class SessionController {
     private(set) var session = CaptionSession()
 
-    /// A message for the user when the session cannot run. Nil when all is well.
+    /// A message for the user when something went wrong. Nil when all is well.
     private(set) var notice: String?
 
     /// What is known about the incoming audio while a session runs.
     private(set) var audioStatus: AudioMonitor.Status = .notBroadcasting
 
+    /// What has been said in this session.
+    private(set) var transcript = Transcript()
+
+    /// The language spoken in what the user is watching.
+    var language: SourceLanguage {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: Self.languageKey) }
+    }
+
     let window = CaptionWindow()
 
+    private static let languageKey = "sourceLanguage"
+
     private let audio = AudioMonitor()
-    private var demoTask: Task<Void, Never>?
+    private let recognizer: any SpeechRecognizing
+    private var isRecognizerReady = false
     private var audioTask: Task<Void, Never>?
+    private var recognitionTask: Task<Void, Never>?
+
+    init() {
+        language =
+            UserDefaults.standard.string(forKey: Self.languageKey).flatMap(SourceLanguage.init(rawValue:))
+            ?? .english
+        #if targetEnvironment(simulator)
+            recognizer = ScriptedSpeechRecognizer()
+        #else
+            recognizer = SystemSpeechRecognizer()
+        #endif
+    }
 
     func prepare() {
         window.onClosed = { [weak self] in self?.windowDidClose() }
         window.prepare()
+        // Before a session, the window previews what captions look like.
         window.show(DemoCaptions.lines(at: 0))
         audioStatus = audio.status
     }
@@ -44,50 +68,43 @@ final class SessionController {
         }
         notice = nil
         session.start()
+        transcript.reset()
+        refreshWindow()
         window.float()
-        startDemoCaptions()
         startAudio()
+        startRecognition()
     }
 
     private func stop() {
         session.stop()
-        stopTasks()
-        audio.requestBroadcastStop()
+        endSession()
         window.close()
     }
 
     private func windowDidClose() {
         guard session.state == .running else { return }
         session.stop()
-        stopTasks()
-        audio.requestBroadcastStop()
+        endSession()
     }
 
-    private func stopTasks() {
-        demoTask?.cancel()
-        demoTask = nil
+    private func endSession() {
         audioTask?.cancel()
         audioTask = nil
-        window.show(audioLevel: nil)
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        isRecognizerReady = false
+        let recognizer = recognizer
+        Task { await recognizer.stop() }
+        audio.requestBroadcastStop()
         #if targetEnvironment(simulator)
             audio.endSimulatedBroadcast()
         #endif
+        window.show(audioLevel: nil)
         audioStatus = audio.status
     }
 
-    private func startDemoCaptions() {
-        demoTask?.cancel()
-        demoTask = Task { [weak self] in
-            var tick = 0
-            while !Task.isCancelled {
-                self?.window.show(DemoCaptions.lines(at: tick))
-                tick += 1
-                try? await Task.sleep(for: .seconds(2))
-            }
-        }
-    }
-
-    /// Reads the shared ring ten times a second and shows the level in the window.
+    /// Reads the shared ring ten times a second, shows the level, and passes the
+    /// samples on to speech recognition.
     private func startAudio() {
         audioTask?.cancel()
         audio.skipToNow()
@@ -101,13 +118,64 @@ final class SessionController {
                 #endif
                 let samples = self.audio.readNewSamples()
                 let status = self.audio.status
-                self.audioStatus = status
-                self.window.show(audioLevel: status == .notBroadcasting || status == .unavailable
-                    ? nil
-                    : AudioLevel.meter(for: samples))
+                if status != self.audioStatus {
+                    self.audioStatus = status
+                    self.refreshWindow()
+                }
+                let hasAudio = status == .receiving || status == .stalled
+                self.window.show(audioLevel: hasAudio ? AudioLevel.meter(for: samples) : nil)
+                if self.isRecognizerReady {
+                    self.recognizer.append(samples)
+                }
                 elapsed += interval
                 try? await Task.sleep(for: .seconds(interval))
             }
+        }
+    }
+
+    private func startRecognition() {
+        recognitionTask?.cancel()
+        isRecognizerReady = false
+        let language = language
+        recognitionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let updates = try await self.recognizer.start(language: language)
+                guard !Task.isCancelled else { return }
+                self.isRecognizerReady = true
+                self.refreshWindow()
+                for try await update in updates {
+                    self.transcript.apply(update)
+                    self.refreshWindow()
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                self.isRecognizerReady = false
+                self.notice = "语音识别出错：\(error.localizedDescription)"
+                self.refreshWindow()
+            }
+        }
+    }
+
+    /// Shows the current captions, or one line saying what the session is waiting
+    /// for when there are none yet.
+    private func refreshWindow() {
+        let lines = transcript.currentLines
+        if lines.rows.isEmpty {
+            window.show(CaptionLines(original: waitingText, translation: ""))
+        } else {
+            window.show(lines)
+        }
+    }
+
+    private var waitingText: String {
+        if notice != nil { return "语音识别没有启动" }
+        if !isRecognizerReady { return "正在准备语音识别…" }
+        switch audioStatus {
+        case .unavailable: return "收不到声音"
+        case .notBroadcasting: return "等待录屏开始"
+        case .stalled: return "暂时没有声音"
+        case .receiving: return "正在听…"
         }
     }
 }

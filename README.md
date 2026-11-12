@@ -1,6 +1,6 @@
 # Jimaku
 
-> **Status: early skeleton.** The app builds and runs in the iOS simulator. Tapping Start opens a floating Picture in Picture window that shows scripted demo captions over other apps; this has been seen in an iPad simulator only. The broadcast extension that captures other apps' audio is written but has never run, because the simulator has no screen broadcast. Speech recognition and translation are not implemented. Nothing has been tested on a physical device. This note is updated as each step is verified on real hardware.
+> **Status: early skeleton.** The app builds and runs in the iOS simulator. Tapping Start opens a floating Picture in Picture window that shows scripted demo captions over other apps; this has been seen in an iPad simulator only. The broadcast extension that captures other apps' audio is written but has never run, because the simulator has no screen broadcast. Speech recognition with the system on-device model is written but has never run, because the simulator has no speech model. Translation is not implemented. Nothing has been tested on a physical device. This note is updated as each step is verified on real hardware.
 
 Jimaku (字幕, Japanese for "subtitles") is a planned iPhone and iPad app for live translated captions over whatever is playing on the device.
 
