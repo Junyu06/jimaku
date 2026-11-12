@@ -12,7 +12,6 @@ struct TranscriptTests {
         let transcript = transcript()
         #expect(transcript.entries.isEmpty)
         #expect(transcript.pending == "")
-        #expect(transcript.pendingTranslation == nil)
     }
 
     @Test("A first guess is speech in progress, not kept yet")
@@ -131,6 +130,86 @@ struct TranscriptTests {
         #expect(transcript.pending == "説明してくださいと言われたので先生")
     }
 
+    @Test("Speech that has stopped growing is kept as it is, without waiting for a mark")
+    func pauseEndsAPiece() {
+        var transcript = transcript()
+        transcript.apply(.partial("それでいいと思う"), at: 0)
+        // The next burst of guesses brings nothing new: the speaker has paused.
+        let settled = transcript.apply(.partial("それでいいと思う"), at: 1)
+        #expect(settled.map(\.original) == ["それでいいと思う"])
+        #expect(transcript.pending == "")
+    }
+
+    @Test("Speech that is still growing is not cut for a pause")
+    func growingSpeechIsNotCut() {
+        var transcript = transcript()
+        transcript.apply(.partial("それでいい"), at: 0)
+        let settled = transcript.apply(.partial("それでいいと思う"), at: 1)
+        #expect(settled.isEmpty)
+        #expect(transcript.pending == "それでいいと思う")
+    }
+
+    @Test("After a pause the speech that follows starts a new piece")
+    func speechAfterAPause() {
+        var transcript = transcript()
+        transcript.apply(.partial("それでいいと思う"), at: 0)
+        transcript.apply(.partial("それでいいと思う"), at: 2)
+        let settled = transcript.apply(.partial("それでいいと思う次は"), at: 3)
+        #expect(settled.isEmpty)
+        #expect(transcript.entries.map(\.original) == ["それでいいと思う"])
+        #expect(transcript.pending == "次は")
+    }
+
+    @Test("A guess that gets shorter is a change, not a pause")
+    func shorterGuessIsNotAPause() {
+        var transcript = transcript()
+        transcript.apply(.partial("I like reading"), at: 0)
+        #expect(transcript.apply(.partial("I like read"), at: 1).isEmpty)
+        transcript.apply(.partial("I like reading books"), at: 1.01)
+        transcript.apply(.final("I like reading books."), at: 1.1)
+        #expect(transcript.entries.map(\.original) == ["I like reading books."])
+    }
+
+    @Test("Time passing without any update also ends a piece")
+    func pauseWithoutUpdates() {
+        var transcript = transcript()
+        transcript.apply(.partial("それでいいと思う"), at: 0)
+        // The usual gap between two bursts of guesses, about a second, is not a pause.
+        #expect(transcript.elapse(to: 1).isEmpty)
+        #expect(transcript.elapse(to: 2.9).isEmpty)
+        #expect(transcript.elapse(to: 3).map(\.original) == ["それでいいと思う"])
+        #expect(transcript.pending == "")
+        #expect(transcript.elapse(to: 6).isEmpty)
+        #expect(transcript.entries.count == 1)
+    }
+
+    @Test("The wait for a pause starts over with every change")
+    func pauseWaitsFromTheLastChange() {
+        var transcript = transcript()
+        transcript.apply(.partial("I like reading"), at: 0)
+        transcript.apply(.partial("I love reading"), at: 0.5)
+        #expect(transcript.elapse(to: 3.4).isEmpty)
+        #expect(transcript.elapse(to: 3.5).map(\.original) == ["I love reading"])
+    }
+
+    @Test("Time passing does nothing when no speech is in progress")
+    func elapseWithoutSpeech() {
+        var transcript = transcript()
+        #expect(transcript.elapse(to: 5).isEmpty)
+        transcript.apply(.final("Hello there."), at: 6)
+        #expect(transcript.elapse(to: 9).isEmpty)
+        #expect(transcript.entries.count == 1)
+    }
+
+    @Test("Time passing does not hand a failed entry out again; only an update does")
+    func elapseDoesNotRetry() {
+        var transcript = transcript()
+        transcript.apply(.final("Hello there."), at: 0)
+        transcript.translationFailed(for: 0)
+        #expect(transcript.elapse(to: 5).isEmpty)
+        #expect(transcript.apply(.partial("How"), at: 6).map(\.id) == [0])
+    }
+
     @Test("A guess that shrinks below what was kept leaves nothing in progress")
     func shrinkingGuess() {
         var transcript = transcript()
@@ -188,78 +267,6 @@ struct TranscriptTests {
         #expect(transcript.apply(.partial("Six"), at: 1).isEmpty)
     }
 
-    // MARK: The provisional translation of the speech in progress
-
-    @Test("A provisional translation is shown for the speech it was made for")
-    func provisional() {
-        var transcript = transcript()
-        transcript.apply(.partial("それでいい"), at: 0)
-        let mark = transcript.pendingMark
-        transcript.setPendingTranslation("那样就好", at: mark)
-        #expect(transcript.pendingTranslation == "那样就好")
-    }
-
-    @Test("It stays while that speech grows or is revised, until a newer one arrives")
-    func provisionalStays() {
-        var transcript = transcript()
-        transcript.apply(.partial("それでいい"), at: 0)
-        transcript.setPendingTranslation("那样就好", at: transcript.pendingMark)
-        transcript.apply(.partial("それでいいですか"), at: 0.2)
-        #expect(transcript.pendingTranslation == "那样就好")
-        transcript.apply(.partial("それはいいですか"), at: 0.4)
-        #expect(transcript.pendingTranslation == "那样就好")
-        transcript.setPendingTranslation("那样可以吗", at: transcript.pendingMark)
-        #expect(transcript.pendingTranslation == "那样可以吗")
-    }
-
-    @Test("One made for speech that has since been kept is not shown")
-    func lateProvisional() {
-        var transcript = transcript()
-        transcript.apply(.partial("はい、そうです。"), at: 0)
-        let mark = transcript.pendingMark
-        transcript.apply(.partial("はい、そうです。それで"), at: 1)
-        transcript.setPendingTranslation("是的，没错。", at: mark)
-        #expect(transcript.pendingTranslation == nil)
-    }
-
-    @Test("When its speech is kept, it stays until the entry's own translation arrives")
-    func provisionalBridgesTheGap() {
-        var transcript = transcript()
-        transcript.apply(.partial("はい、そうです。"), at: 0)
-        transcript.setPendingTranslation("是的，没错", at: transcript.pendingMark)
-        let settled = transcript.apply(.partial("はい、そうです。それで"), at: 1)
-        #expect(transcript.pendingTranslation == "是的，没错")
-        transcript.setTranslation("是的，没错。", for: settled[0].id)
-        #expect(transcript.pendingTranslation == nil)
-    }
-
-    @Test("A newer provisional translation replaces one that was only bridging")
-    func newerProvisionalReplacesBridge() {
-        var transcript = transcript()
-        transcript.apply(.partial("はい、そうです。"), at: 0)
-        transcript.setPendingTranslation("是的，没错", at: transcript.pendingMark)
-        transcript.apply(.partial("はい、そうです。それでいい"), at: 1)
-        transcript.setPendingTranslation("那样就好", at: transcript.pendingMark)
-        #expect(transcript.pendingTranslation == "那样就好")
-    }
-
-    @Test("A final result that keeps nothing new leaves no provisional translation behind")
-    func finalClearsProvisional() {
-        var transcript = transcript()
-        transcript.apply(.partial("uh"), at: 0)
-        transcript.setPendingTranslation("呃", at: transcript.pendingMark)
-        transcript.apply(.final(""), at: 1)
-        #expect(transcript.pendingTranslation == nil)
-    }
-
-    @Test("A blank provisional translation is ignored")
-    func blankProvisional() {
-        var transcript = transcript()
-        transcript.apply(.partial("それでいい"), at: 0)
-        transcript.setPendingTranslation("  ", at: transcript.pendingMark)
-        #expect(transcript.pendingTranslation == nil)
-    }
-
     @Test("Resetting clears everything and restarts numbering")
     func reset() {
         var transcript = transcript()
@@ -302,10 +309,39 @@ struct RecordedTranscriptTests {
         String(text.filter { CaptionText.spokenCount(in: String($0)) == 1 })
     }
 
-    @Test("Continuous Japanese is kept in pieces long before the recognizer finalizes it")
+    @Test("Continuous Japanese is kept sentence by sentence long before the recognizer finalizes it")
     func japaneseIsKeptEarly() {
         let run = replay(RecordedSpeech.japanese, rules: .japanese)
-        #expect(run.entriesBeforeLastFinal >= 6)
+        // The recording has five sentences; two of them are cut at a comma.
+        #expect(run.entriesBeforeLastFinal == 7)
+        #expect(
+            run.transcript.entries.map(\.original) == [
+                "今日は朝からとてもいい天気だったので、",
+                "近くの公園まで散歩に行ってきました。",
+                "途中で新しいパン屋さんを見つけて、",
+                "焼きたてのクロワッサンを 2つ買いました。",
+                "店員さんがとても親切でおすすめのコーヒーも教えてくれました。",
+                "家に帰ってから食べてみたら本当に美味しかったです。",
+                "また来週も行ってみようと思います。",
+            ])
+    }
+
+    @Test("Checking for a pause ten times a second between guesses cuts nothing extra")
+    func ticksBetweenBurstsAreNotPauses() {
+        // Guesses come about a second apart. The gaps between them are not pauses.
+        var transcript = Transcript(rules: .japanese)
+        var previous = 0.0
+        for step in RecordedSpeech.japanese {
+            var tick = previous + 0.1
+            while tick < step.time {
+                transcript.elapse(to: tick)
+                tick += 0.1
+            }
+            transcript.apply(step.update, at: step.time)
+            previous = step.time
+        }
+        #expect(transcript.entries.count == 7)
+        #expect(transcript.entries.first?.original == "今日は朝からとてもいい天気だったので、")
     }
 
     @Test("What was kept from the Japanese recording never changed afterwards")

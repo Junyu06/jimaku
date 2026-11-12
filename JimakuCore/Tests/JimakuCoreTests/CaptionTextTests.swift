@@ -130,6 +130,23 @@ struct ChunkTests {
         #expect(result.spoken == 14)
     }
 
+    @Test("Japanese is cut after a form that joins clauses when there is one")
+    func japaneseJoiningForm() {
+        // Words start after から, まで, に, and と; the first of them ends a clause.
+        let result = cut("今日は天気がいいから公園まで散歩に行こうと思う")
+        #expect(result.chunks == ["今日は天気がいいから"])
+        #expect(result.rest == "公園まで散歩に行こうと思う")
+    }
+
+    @Test("A single し or て inside a word is not taken for the end of a clause")
+    func shortFormsInsideWords() {
+        // 出し入れ is one word; the cut goes to the last word start within the limit.
+        let text = "今日は倉庫に置いた古い荷物を出し入れする道具について説明します"
+        let result = cut(text, rules: .japanese)
+        #expect(result.chunks == ["今日は倉庫に置いた古い荷物を出し入れする"])
+        #expect(result.rest == "道具について説明します")
+    }
+
     @Test("Speech shorter than the limit waits for more")
     func shortSpeechWaits() {
         let result = cut("今日行くの行かないのゆっくり")

@@ -158,18 +158,6 @@ struct RollingRowTests {
         #expect(row.visible == [CaptionLine(settled: "这是一条演"), CaptionLine(settled: "示字幕这个")])
     }
 
-    @Test("Limited tentative text shows only its beginning, so a settled line stays in view")
-    func limitedTentative() {
-        var row = RollingRow(columns: 10, lines: 2, tentativeLimit: 10)
-        row.append("这是一条演示字幕")
-        row.setTentative("这个窗口应该一直浮在上面")
-        #expect(
-            row.visible == [
-                CaptionLine(settled: "示字幕", tentative: "这个"),
-                CaptionLine(settled: "", tentative: "窗口应"),
-            ])
-    }
-
     @Test("A character on a full line stays there when a mark arrives after it")
     func marksDoNotPullCharactersDown() {
         var tentative = RollingRow(columns: 10, lines: 2)
@@ -216,16 +204,32 @@ struct RollingRowTests {
         #expect(texts(row) == ["WWWWWW", "WWWWWW"])
     }
 
-    @Test("The limit on tentative text counts measured widths too")
-    func limitUsesMeasuredWidths() {
-        var row = RollingRow(columns: 24, lines: 2, tentativeLimit: 24, widths: GlyphWidths(narrow: ["W": 1.9]))
-        row.append("一二三四五六七八九十甲乙")
-        row.setTentative(String(repeating: "W", count: 24))
-        #expect(
-            row.visible == [
-                CaptionLine(settled: "一二三四五六七八九十甲乙"),
-                CaptionLine(settled: "", tentative: String(repeating: "W", count: 12)),
-            ])
+    @Test("Tentative text that may not wrap is left out when it does not fit on the line")
+    func tentativeThatMayNotWrap() {
+        var full = RollingRow(columns: 10, lines: 2, tentativeWraps: false)
+        full.append("一二三四五")
+        full.setTentative("…")
+        #expect(full.visible == [CaptionLine(settled: "一二三四五")])
+
+        var roomy = RollingRow(columns: 10, lines: 2, tentativeWraps: false)
+        roomy.append("一二三")
+        roomy.setTentative("…")
+        #expect(roomy.visible == [CaptionLine(settled: "一二三", tentative: "…")])
+    }
+
+    @Test("Tentative text that may not wrap never rolls the row")
+    func tentativeThatMayNotWrapDoesNotRoll() {
+        var row = RollingRow(columns: 10, lines: 2, tentativeWraps: false)
+        row.append("一二三四五六七八九十")
+        row.setTentative("…")
+        #expect(texts(row) == ["一二三四五", "六七八九十"])
+    }
+
+    @Test("An empty row shows tentative text that may not wrap")
+    func tentativeOnAnEmptyRow() {
+        var row = RollingRow(columns: 10, lines: 2, tentativeWraps: false)
+        row.setTentative("…")
+        #expect(row.visible == [CaptionLine(settled: "", tentative: "…")])
     }
 
     @Test("Blank text changes nothing")
