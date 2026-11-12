@@ -1,6 +1,6 @@
 # Jimaku
 
-> **Status: early skeleton.** An empty app shell builds and runs in the iOS simulator: one screen with a button that only switches between Start and Stop; it does not start any caption feature yet. Audio capture, speech recognition, translation, and the floating caption window are not implemented, and nothing has been tested on a physical device. This note is updated as each step is verified on real hardware.
+> **Status: first version written; an earlier build has run on a physical iPad.** On 2026-11-12 the owner ran it on an iPad with a Japanese video: audio capture, speech recognition, language-pack translation, and the floating window worked together. That run also showed the translation falling behind continuous speech, so translation now starts while speech is still in progress. The current build has only been checked in an iPad simulator, where scripted input stands in for capture, recognition, and language-pack translation. Nothing has run on an iPhone. See `docs/cases/` for what was checked and how.
 
 Jimaku (字幕, Japanese for "subtitles") is a planned iPhone and iPad app for live translated captions over whatever is playing on the device.
 
@@ -33,13 +33,13 @@ Planned use:
 4. Switch to the app you want to watch. Captions show the original line and the translated line.
 5. Return to Jimaku and tap Stop.
 
-## Planned scope of the first version
+## Scope of the first version
 
 - iPhone and iPad, one Swift codebase.
 - Source languages: English and Japanese, chosen manually.
 - Target language: Simplified Chinese.
 - Two caption lines by default (original and translation), adjustable.
-- A line is translated once the recognizer has settled on it.
+- A sentence is translated as soon as it ends; the unfinished end of the speech gets a provisional translation that updates as it grows.
 - A switch between two translation engines: Translation framework language packs, and the on-device Apple Intelligence model.
 - A log of the current session's captions, readable in the app.
 - Closing the floating window ends the session, and also stops the screen broadcast if the system allows the app to do so.

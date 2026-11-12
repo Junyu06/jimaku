@@ -1,0 +1,446 @@
+import Foundation
+import JimakuCore
+import Observation
+import os
+
+/// Runs a caption session: floats the window, reads the audio the broadcast
+/// extension captured, sends it to speech recognition, translates what was said,
+/// and shows both.
+///
+/// The rules live in JimakuCore: `CaptionSession` for the lifecycle, `Generation` for
+/// telling stale asynchronous results from current ones, `TranslationPipeline` for
+/// what gets translated when, and `CaptionPlaceholder` for what to say while there
+/// is no caption. This class connects them to the system.
+@MainActor
+@Observable
+final class SessionController {
+    private(set) var session = CaptionSession()
+
+    /// What is known about the incoming audio while a session runs.
+    private(set) var audioStatus: AudioAvailability = .notBroadcasting
+
+    /// What has been said in this session.
+    private(set) var transcript = Transcript()
+
+    /// A message for the user when something went wrong. Nil when all is well.
+    var notice: String? { windowNotice ?? recognitionNotice ?? translationNotice }
+
+    /// The language spoken in what the user is watching.
+    var language: SourceLanguage {
+        didSet { UserDefaults.standard.set(language.rawValue, forKey: Self.languageKey) }
+    }
+
+    /// What translates the captions. Can be changed while a session runs.
+    var engine: TranslationEngine {
+        didSet {
+            UserDefaults.standard.set(engine.rawValue, forKey: Self.engineKey)
+            guard engine != oldValue, session.isActive else { return }
+            prepareTranslation()
+        }
+    }
+
+    /// How captions look. Changes show in the window at once.
+    var style: CaptionStyle {
+        didSet {
+            UserDefaults.standard.set(style.textSize.rawValue, forKey: Self.textSizeKey)
+            UserDefaults.standard.set(style.mode.rawValue, forKey: Self.modeKey)
+            refreshWindow()
+        }
+    }
+
+    let window = CaptionWindow()
+
+    private static let languageKey = "sourceLanguage"
+    private static let engineKey = "translationEngine"
+    private static let textSizeKey = "captionTextSize"
+    private static let modeKey = "captionMode"
+
+    /// How long the caption window may take to appear or to close before the session
+    /// stops waiting for it.
+    private static let windowPatience: Duration = .seconds(5)
+
+    private let audio = AudioMonitor()
+    private let recognizer: any SpeechRecognizing
+    private let languagePackSource: any TranslatorSource
+    private let appleIntelligenceSource: any TranslatorSource = AppleIntelligenceSource()
+
+    private var windowNotice: String?
+    private var recognitionNotice: String?
+    private var translationNotice: String?
+
+    private var recognition: CaptionPlaceholder.Readiness = .preparing
+    private var pipeline = TranslationPipeline()
+    private var translator: (any PreparedTranslator)?
+
+    /// Current for the running session; stale once it ends.
+    private var sessionGeneration = Generation()
+    /// Current for the translator being prepared or in use; stale once the engine
+    /// changes or the session ends.
+    private var translatorGeneration = Generation()
+    private var translatorToken: Generation.Token?
+
+    private var audioTask: Task<Void, Never>?
+    private var recognitionTask: Task<Void, Never>?
+    private var recognizerStopTask: Task<Void, Never>?
+    private var watchdogTask: Task<Void, Never>?
+    private let log = Logger(subsystem: "Jimaku", category: "session")
+
+    init() {
+        let defaults = UserDefaults.standard
+        language = defaults.string(forKey: Self.languageKey).flatMap(SourceLanguage.init(rawValue:)) ?? .english
+        engine = defaults.string(forKey: Self.engineKey).flatMap(TranslationEngine.init(rawValue:)) ?? .languagePack
+        style = CaptionStyle(
+            textSize: defaults.string(forKey: Self.textSizeKey).flatMap(CaptionStyle.TextSize.init(rawValue:))
+                ?? .medium,
+            mode: defaults.string(forKey: Self.modeKey).flatMap(CaptionStyle.Mode.init(rawValue:))
+                ?? .originalAndTranslation
+        )
+        #if targetEnvironment(simulator)
+            recognizer = ScriptedSpeechRecognizer()
+            languagePackSource = ScriptedSource()
+        #else
+            recognizer = SystemSpeechRecognizer()
+            languagePackSource = LanguagePackSource()
+        #endif
+    }
+
+    func prepare() {
+        window.onStarted = { [weak self] in self?.windowDidStart() }
+        window.onFailedToStart = { [weak self] error in self?.windowFailedToStart(error) }
+        window.onClosed = { [weak self] in self?.windowDidClose() }
+        window.prepare()
+        window.show(style: style)
+        // Before a session, the window previews what captions look like.
+        window.show(DemoCaptions.lines(at: 0))
+        audioStatus = audio.status
+    }
+
+    // MARK: Starting and stopping
+
+    func performPrimaryAction() {
+        if session.primaryAction == .start, session.canPerformPrimaryAction, !window.isSupported {
+            windowNotice = "这台设备不支持画中画，悬浮窗开不了。"
+            return
+        }
+        let action = session.performPrimaryAction()
+        trace("primary action: \(String(describing: action)), now \(String(describing: self.session.state))")
+        switch action {
+        case .start: begin()
+        case .stop: finish()
+        case nil: break
+        }
+    }
+
+    private func begin() {
+        windowNotice = nil
+        recognitionNotice = nil
+        translationNotice = nil
+        transcript.reset()
+        pipeline.reset()
+        recognition = .preparing
+        let token = sessionGeneration.advance()
+        audio.beginCapture()
+        refreshWindow()
+        startAudio(for: token)
+        startRecognition(for: token)
+        prepareTranslation()
+        window.float()
+        // If the window has not appeared after a while, give up instead of leaving
+        // the button on Stop with nothing on screen.
+        watch { controller in
+            guard controller.session.state == .starting else { return }
+            controller.session.windowFailedToStart()
+            controller.endSession()
+            // Cut the old window off, so nothing it reports later reaches a new session.
+            controller.window.abandon()
+            controller.windowNotice = "悬浮窗没能打开。请留在 Jimaku 里再点一次开始。"
+        }
+    }
+
+    private func finish() {
+        endSession()
+        window.close()
+        // If the system never reports the window closed, stop waiting for it.
+        watch { controller in
+            guard controller.session.state == .stopping else { return }
+            // Cut the old window off before a new session may start, so a close it
+            // reports late cannot end that session.
+            controller.window.abandon()
+            controller.session.windowDidClose()
+        }
+    }
+
+    private func windowDidStart() {
+        session.windowDidStart()
+        trace("window started, now \(String(describing: self.session.state))")
+    }
+
+    private func windowFailedToStart(_ error: Error) {
+        let wasActive = session.isActive
+        trace("window failed to start: \(error.localizedDescription)")
+        session.windowFailedToStart()
+        guard wasActive else { return }
+        endSession()
+        windowNotice = "悬浮窗没能打开：\(error.localizedDescription)"
+    }
+
+    private func windowDidClose() {
+        let previous = session.state
+        trace("window closed while \(String(describing: previous))")
+        session.windowDidClose()
+        switch previous {
+        case .starting:
+            // The window went away before it ever appeared, which happens when a
+            // start follows a stop too closely. Say so instead of ending silently.
+            endSession()
+            windowNotice = "悬浮窗没能打开，请再点一次开始。"
+        case .running:
+            // The user or the system closed the window while the session was running.
+            endSession()
+        case .idle, .stopping:
+            break
+        }
+    }
+
+    /// Stops everything a session started. Results that arrive afterwards belong to
+    /// stale generations and are ignored.
+    private func endSession() {
+        sessionGeneration.invalidate()
+        translatorGeneration.invalidate()
+        translatorToken = nil
+        translator = nil
+        pipeline.reset()
+        recognition = .preparing
+
+        audioTask?.cancel()
+        audioTask = nil
+        recognitionTask?.cancel()
+        recognitionTask = nil
+
+        // Stops run one after another, and the next start waits for the last one.
+        let recognizer = recognizer
+        let previousStop = recognizerStopTask
+        recognizerStopTask = Task {
+            await previousStop?.value
+            await recognizer.stop()
+        }
+
+        audio.endCapture()
+        #if targetEnvironment(simulator)
+            audio.endSimulatedBroadcast()
+        #endif
+        window.show(audioLevel: nil)
+        audioStatus = audio.status
+    }
+
+    // MARK: Audio
+
+    /// Reads the shared ring ten times a second, shows the level, and passes the
+    /// samples on to speech recognition.
+    private func startAudio(for token: Generation.Token) {
+        audioTask?.cancel()
+        audioTask = Task { [weak self] in
+            let interval = 0.1
+            var elapsed = 0.0
+            while !Task.isCancelled {
+                guard let self, self.sessionGeneration.isCurrent(token) else { return }
+                #if targetEnvironment(simulator)
+                    self.audio.writeSimulatedAudio(elapsed: elapsed, duration: interval)
+                #endif
+                let samples = self.audio.readNewSamples()
+                let status = self.audio.status
+                if status != self.audioStatus {
+                    self.audioStatus = status
+                    self.refreshWindow()
+                }
+                let hasAudio = status == .receiving || status == .stalled
+                self.window.show(audioLevel: hasAudio ? AudioLevel.meter(for: samples) : nil)
+                if self.recognition == .ready {
+                    self.recognizer.append(samples)
+                }
+                elapsed += interval
+                try? await Task.sleep(for: .seconds(interval))
+            }
+        }
+    }
+
+    // MARK: Recognition
+
+    private func startRecognition(for token: Generation.Token) {
+        recognitionTask?.cancel()
+        let language = language
+        let previousStop = recognizerStopTask
+        recognitionTask = Task { [weak self] in
+            // Let the previous session's recognizer finish shutting down first.
+            await previousStop?.value
+            guard let self, self.sessionGeneration.isCurrent(token) else { return }
+            do {
+                let updates = try await self.recognizer.start(language: language)
+                guard self.sessionGeneration.isCurrent(token) else { return }
+                self.recognition = .ready
+                self.refreshWindow()
+                for try await update in updates {
+                    guard self.sessionGeneration.isCurrent(token) else { return }
+                    for settled in self.transcript.apply(update) {
+                        self.pipeline.settle(settled)
+                    }
+                    self.pipeline.offerPending(self.transcript.pending)
+                    self.pump()
+                    self.refreshWindow()
+                }
+                // The recognizer stopped on its own while the session is still running.
+                guard self.sessionGeneration.isCurrent(token) else { return }
+                self.recognition = .failed
+                self.recognitionNotice = "语音识别停了。请点停止，再重新开始。"
+                self.refreshWindow()
+            } catch {
+                guard self.sessionGeneration.isCurrent(token), !(error is CancellationError) else { return }
+                self.recognition = .failed
+                self.recognitionNotice = "语音识别出错：\(error.localizedDescription)"
+                self.refreshWindow()
+            }
+        }
+    }
+
+    // MARK: Translation
+
+    /// Gets a translator for the current engine and language. If that fails, the
+    /// session carries on with original-language captions and tells the user why.
+    private func prepareTranslation() {
+        let token = translatorGeneration.advance()
+        translatorToken = token
+        translator = nil
+        translationNotice = nil
+        pipeline.setReadiness(.preparing)
+        refreshWindow()
+
+        let source = source(for: engine)
+        let language = language
+        Task { [weak self] in
+            do {
+                let prepared = try await source.prepare(from: language)
+                guard let self, self.translatorGeneration.isCurrent(token) else { return }
+                self.translator = prepared
+                self.pipeline.setReadiness(.ready)
+                self.refreshWindow()
+                self.pump()
+            } catch {
+                guard let self, self.translatorGeneration.isCurrent(token) else { return }
+                self.pipeline.setReadiness(.failed)
+                self.translationNotice = error.localizedDescription
+                self.refreshWindow()
+            }
+        }
+    }
+
+    private func source(for engine: TranslationEngine) -> any TranslatorSource {
+        switch engine {
+        case .languagePack: languagePackSource
+        case .appleIntelligence: appleIntelligenceSource
+        }
+    }
+
+    /// Sends the next thing to translate, if the pipeline has one: a settled sentence,
+    /// or else the speech still in progress.
+    private func pump() {
+        guard let translator, let token = translatorToken, let job = pipeline.takeNext() else { return }
+        let source =
+            switch job {
+            case .entry(let entry): entry.original
+            case .pending(let text): text
+            }
+        Task { [weak self] in
+            let result: Result<String, Error>
+            do {
+                result = .success(try await translator.translate(source))
+            } catch {
+                result = .failure(error)
+            }
+            // The engine changed or the session ended while this was being translated.
+            guard let self, self.translatorGeneration.isCurrent(token) else { return }
+            switch (job, result) {
+            case (.entry(let entry), .success(let translation)):
+                self.transcript.setTranslation(translation, for: entry)
+            case (.pending(let text), .success(let translation)):
+                self.transcript.setPendingTranslation(translation, of: text)
+            case (.entry(let entry), .failure):
+                // Let a later recognizer update hand this sentence out again.
+                self.transcript.translationFailed(for: entry)
+            case (.pending, .failure):
+                break
+            }
+            switch result {
+            case .success:
+                self.pipeline.finishCurrent(succeeded: true)
+                self.translationNotice = nil
+                self.refreshWindow()
+                self.pump()
+            case .failure(let error):
+                // Translation counts as unavailable until one succeeds, so the window
+                // falls back to the original line instead of waiting. The next
+                // recognizer update tries again; retrying at once would spin.
+                self.pipeline.finishCurrent(succeeded: false)
+                self.translationNotice = "翻译出错：\(error.localizedDescription)"
+                self.refreshWindow()
+            }
+        }
+    }
+
+    // MARK: The window's content
+
+    /// Shows the current captions, or one line saying what the session is waiting
+    /// for when there are none yet.
+    private func refreshWindow() {
+        // Translation-only makes no sense when translation cannot run.
+        let mode = style.mode.effective(translationAvailable: pipeline.isTranslationAvailable)
+        window.show(style: CaptionStyle(textSize: style.textSize, mode: mode))
+
+        // Outside a session the window keeps its preview caption.
+        guard session.isActive else { return }
+        let lines = transcript.currentLines
+        if lines.rows(in: mode).isEmpty {
+            let placeholder = CaptionPlaceholder.choose(
+                recognition: recognition,
+                audio: audioStatus,
+                translation: pipeline.isTranslationAvailable ? pipeline.readiness : .failed,
+                mode: mode,
+                hasSpeech: !transcript.entries.isEmpty || !transcript.pending.isEmpty
+            )
+            // The waiting line goes in the translation slot so it shows in both display modes.
+            window.show(CaptionLines(original: "", translation: text(for: placeholder)))
+        } else {
+            window.show(lines)
+        }
+    }
+
+    private func text(for placeholder: CaptionPlaceholder) -> String {
+        switch placeholder {
+        case .recognitionFailed: "语音识别没有启动"
+        case .preparingRecognition: "正在准备语音识别…"
+        case .audioUnavailable: "收不到声音"
+        case .waitingForBroadcast: "等待录屏开始"
+        case .noSound: "暂时没有声音"
+        case .listening: "正在听…"
+        case .preparingTranslation: "正在准备翻译…"
+        case .translating: "正在翻译…"
+        case .translationUnavailable: "翻译用不了"
+        }
+    }
+
+    // MARK: Helpers
+
+    /// Records a lifecycle event in the system log, to diagnose a session on a device.
+    private func trace(_ message: String) {
+        log.info("\(message, privacy: .public)")
+    }
+
+    /// Runs `check` once after `windowPatience`, replacing any earlier pending check.
+    private func watch(_ check: @escaping @MainActor (SessionController) -> Void) {
+        watchdogTask?.cancel()
+        watchdogTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.windowPatience)
+            guard !Task.isCancelled, let self else { return }
+            check(self)
+        }
+    }
+}

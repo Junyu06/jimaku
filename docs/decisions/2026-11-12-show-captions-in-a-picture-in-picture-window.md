@@ -13,3 +13,5 @@ Cost accepted: the system allows one Picture in Picture window at a time, and it
 Fallback if this cannot be made to work on a device: on iPad only, run the app in its own window beside the watched app. Switching to the fallback is a change of plan and needs a new decision file.
 
 Status of evidence: not yet verified on a device.
+
+Evidence added 2026-11-12: an earlier version of this ran on a physical iPad; see the device entries under `docs/cases/`. The current version has not run on a device.
