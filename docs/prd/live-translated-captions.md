@@ -42,4 +42,5 @@ Running reliably for a full hour is not part of this acceptance.
 ## Status
 
 - Floating caption window: implemented with scripted demo captions. Seen in an iPad simulator; not verified on a device.
-- Audio capture, speech recognition, translation, engine switch, text size, one-line mode, session log: not implemented.
+- Audio capture: implemented, shown as a level meter in the floating window. The extension has not run anywhere; the path from the shared ring to the meter was exercised in the simulator with synthetic audio.
+- Speech recognition, translation, engine switch, text size, one-line mode, session log: not implemented.

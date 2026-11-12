@@ -36,3 +36,9 @@ Secrets.xcconfig
 
 # Generated Xcode project (run `xcodegen generate`)
 *.xcodeproj/
+
+# Generated from project.yml by XcodeGen
+JimakuApp/Info.plist
+JimakuApp/*.entitlements
+JimakuBroadcast/Info.plist
+JimakuBroadcast/*.entitlements

@@ -7,6 +7,14 @@ options:
 configFiles:
   Debug: JimakuApp/Signing.xcconfig
   Release: JimakuApp/Signing.xcconfig
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "6.0"
+    CODE_SIGN_STYLE: Automatic
+    # One App Group shared by the app and the broadcast extension.
+    JIMAKU_APP_GROUP: group.$(JIMAKU_BUNDLE_PREFIX).jimaku
 packages:
   JimakuCore:
     path: JimakuCore
@@ -21,22 +29,67 @@ targets:
           - "*.xcconfig.local"
     dependencies:
       - package: JimakuCore
+      - target: JimakuBroadcast
+    # Info.plist and entitlements are generated from this file; they are not committed.
+    info:
+      path: JimakuApp/Info.plist
+      properties:
+        CFBundleDisplayName: Jimaku
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen: {}
+        UIBackgroundModes: [audio]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        JimakuAppGroup: $(JIMAKU_APP_GROUP)
+    entitlements:
+      path: JimakuApp/JimakuApp.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - $(JIMAKU_APP_GROUP)
     settings:
       base:
         PRODUCT_NAME: Jimaku
         PRODUCT_BUNDLE_IDENTIFIER: $(JIMAKU_BUNDLE_PREFIX).jimaku
-        MARKETING_VERSION: "0.1.0"
-        CURRENT_PROJECT_VERSION: "1"
-        SWIFT_VERSION: "6.0"
         TARGETED_DEVICE_FAMILY: "1,2"
-        CODE_SIGN_STYLE: Automatic
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Jimaku
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIBackgroundModes: audio
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
-        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+  JimakuBroadcast:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: JimakuBroadcast
+    dependencies:
+      - package: JimakuCore
+      - sdk: ReplayKit.framework
+    info:
+      path: JimakuBroadcast/Info.plist
+      properties:
+        CFBundleDisplayName: Jimaku
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        JimakuAppGroup: $(JIMAKU_APP_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.broadcast-services-upload
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).SampleHandler
+          RPBroadcastProcessMode: RPBroadcastProcessModeSampleBuffer
+    entitlements:
+      path: JimakuBroadcast/JimakuBroadcast.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - $(JIMAKU_APP_GROUP)
+    settings:
+      base:
+        PRODUCT_NAME: JimakuBroadcast
+        PRODUCT_BUNDLE_IDENTIFIER: $(JIMAKU_BUNDLE_PREFIX).jimaku.broadcast
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SKIP_INSTALL: YES
 schemes:
   Jimaku:
     build:

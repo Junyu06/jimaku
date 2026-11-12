@@ -14,9 +14,15 @@ struct CaptionFrameRenderer {
     private static let rowSpacing: CGFloat = 10
     private static let background = UIColor(white: 0.07, alpha: 1)
 
-    func makeSampleBuffer(for lines: CaptionLines) -> CMSampleBuffer? {
+    private static let meterHeight: CGFloat = 10
+    private static let meterTrack = UIColor(white: 1, alpha: 0.14)
+    private static let meterFill = UIColor(red: 0.98, green: 0.82, blue: 0.25, alpha: 1)
+
+    /// - Parameter audioLevel: 0...1, drawn as a thin meter along the bottom so the
+    ///   reader can see that audio is arriving. Nil hides the meter.
+    func makeSampleBuffer(for lines: CaptionLines, audioLevel: Double? = nil) -> CMSampleBuffer? {
         guard let pixelBuffer = makePixelBuffer() else { return nil }
-        draw(lines.rows, into: pixelBuffer)
+        draw(lines.rows, audioLevel: audioLevel, into: pixelBuffer)
         return makeSampleBuffer(from: pixelBuffer)
     }
 
@@ -37,7 +43,7 @@ struct CaptionFrameRenderer {
         return pixelBuffer
     }
 
-    private func draw(_ rows: [CaptionRow], into pixelBuffer: CVPixelBuffer) {
+    private func draw(_ rows: [CaptionRow], audioLevel: Double?, into pixelBuffer: CVPixelBuffer) {
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
 
@@ -63,10 +69,27 @@ struct CaptionFrameRenderer {
         UIGraphicsPushContext(context)
         defer { UIGraphicsPopContext() }
 
-        let content = CGRect(origin: .zero, size: size).insetBy(dx: Self.padding, dy: Self.padding)
+        var content = CGRect(origin: .zero, size: size).insetBy(dx: Self.padding, dy: Self.padding)
+        if let audioLevel {
+            let (meter, rest) = content.divided(atDistance: Self.meterHeight, from: .maxYEdge)
+            drawMeter(level: audioLevel, in: meter)
+            content = rest.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: Self.rowSpacing * 2, right: 0))
+        }
         for (row, rect) in zip(rows, rects(for: rows, in: content)) {
             draw(row, in: rect)
         }
+    }
+
+    private func drawMeter(level: Double, in rect: CGRect) {
+        let radius = rect.height / 2
+        Self.meterTrack.setFill()
+        UIBezierPath(roundedRect: rect, cornerRadius: radius).fill()
+        let clamped = min(max(level, 0), 1)
+        guard clamped > 0 else { return }
+        var fill = rect
+        fill.size.width = max(rect.width * clamped, rect.height)
+        Self.meterFill.setFill()
+        UIBezierPath(roundedRect: fill, cornerRadius: radius).fill()
     }
 
     /// Splits the content area between rows. A secondary row gets about a third of

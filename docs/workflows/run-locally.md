@@ -12,7 +12,7 @@ swift test --package-path JimakuCore
 
 ## Generate the Xcode project
 
-The `.xcodeproj` is generated and not committed. Run this after cloning and after any change to `project.yml`.
+The `.xcodeproj`, the `Info.plist` files, and the `.entitlements` files are generated from `project.yml` and not committed. Run this after cloning and after any change to `project.yml`.
 
 ```bash
 xcodegen generate
@@ -40,3 +40,5 @@ JIMAKU_BUNDLE_PREFIX = com.yourname
 ```
 
 Then select your device in Xcode and press Run.
+
+The app and its broadcast extension share an App Group named `group.<JIMAKU_BUNDLE_PREFIX>.jimaku`. With automatic signing, Xcode registers it for your team on the first build.

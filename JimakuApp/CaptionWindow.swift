@@ -23,6 +23,7 @@ final class CaptionWindow: NSObject {
     private var controller: AVPictureInPictureController?
     private var possibleObservation: NSKeyValueObservation?
     private var lines = CaptionLines(original: "", translation: "")
+    private var audioLevel: Double?
     private var wantsToFloat = false
 
     /// Sets up the audio session and the Picture in Picture controller. Safe to call
@@ -58,6 +59,15 @@ final class CaptionWindow: NSObject {
         render()
     }
 
+    /// Shows how loud the incoming audio is, 0...1. Nil hides the meter.
+    func show(audioLevel: Double?) {
+        // The meter is a few hundred pixels wide; smaller changes are not visible.
+        let rounded = audioLevel.map { ($0 * 200).rounded() / 200 }
+        guard rounded != self.audioLevel else { return }
+        self.audioLevel = rounded
+        render()
+    }
+
     /// Asks the system to float the window. If the system is not ready yet, the
     /// window floats as soon as it is.
     func float() {
@@ -78,7 +88,7 @@ final class CaptionWindow: NSObject {
     }
 
     private func render() {
-        guard let sampleBuffer = renderer.makeSampleBuffer(for: lines) else { return }
+        guard let sampleBuffer = renderer.makeSampleBuffer(for: lines, audioLevel: audioLevel) else { return }
         let sampleRenderer = displayLayer.sampleBufferRenderer
         if sampleRenderer.status == .failed {
             sampleRenderer.flush()
