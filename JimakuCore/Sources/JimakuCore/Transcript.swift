@@ -33,11 +33,17 @@ public struct Transcript: Equatable, Sendable {
         /// ever delivered within the stretch it was made for.
         public let stretch: Int
 
-        public init(id: Int, original: String, translation: String?, stretch: Int = 0) {
+        /// Which appearance of these words in the stretch this is. If the recognizer
+        /// drops a sentence and later says the same words again, that is a new
+        /// appearance, and results of jobs for the old one do not apply to it.
+        public let appearance: Int
+
+        public init(id: Int, original: String, translation: String?, stretch: Int = 0, appearance: Int = 0) {
             self.id = id
             self.original = original
             self.translation = translation
             self.stretch = stretch
+            self.appearance = appearance
         }
     }
 
@@ -75,6 +81,12 @@ public struct Transcript: Equatable, Sendable {
     /// Sentences of the stretch in progress already handed out for translation.
     private var handedOut: Set<String> = []
 
+    /// The appearance number of each sentence the stretch in progress says now.
+    private var appearances: [String: Int] = [:]
+
+    /// The next appearance number to give out in the stretch in progress.
+    private var nextAppearance = 0
+
     public init() {}
 
     /// Takes in a recognizer update. Returns the sentences that are new or rewritten
@@ -109,7 +121,9 @@ public struct Transcript: Equatable, Sendable {
         var delivered = false
         for index in entries.indices.reversed() {
             if entries[index].stretch < entry.stretch { break }
-            if entries[index].stretch == entry.stretch, entries[index].original == entry.original {
+            if entries[index].stretch == entry.stretch, entries[index].original == entry.original,
+                entries[index].appearance == entry.appearance
+            {
                 entries[index].translation = text
                 delivered = true
             }
@@ -124,7 +138,7 @@ public struct Transcript: Equatable, Sendable {
     /// The translation of an entry failed. While its stretch is in progress, the
     /// sentence is handed out again by the next update, so it can be retried.
     public mutating func translationFailed(for entry: Entry) {
-        guard entry.stretch == currentStretch else { return }
+        guard entry.stretch == currentStretch, appearances[entry.original] == entry.appearance else { return }
         handedOut.remove(entry.original)
     }
 
@@ -164,6 +178,7 @@ public struct Transcript: Equatable, Sendable {
         let present = Set(sentences)
         stretchTranslations = stretchTranslations.filter { present.contains($0.key) }
         handedOut.formIntersection(present)
+        appearances = appearances.filter { present.contains($0.key) }
 
         var updated: [Entry] = []
         var toTranslate: [Entry] = []
@@ -171,11 +186,16 @@ public struct Transcript: Equatable, Sendable {
             let offset = updated.count
             let unchanged = offset < previous.count && previous[offset].original == sentence
             let translation = (unchanged ? previous[offset].translation : nil) ?? stretchTranslations[sentence]
+            if appearances[sentence] == nil {
+                appearances[sentence] = nextAppearance
+                nextAppearance += 1
+            }
             let entry = Entry(
                 id: finalCount + offset,
                 original: sentence,
                 translation: translation,
-                stretch: currentStretch
+                stretch: currentStretch,
+                appearance: appearances[sentence] ?? 0
             )
             updated.append(entry)
             if translation == nil, handedOut.insert(sentence).inserted {
@@ -187,6 +207,8 @@ public struct Transcript: Equatable, Sendable {
         if isFinal {
             finalCount = entries.count
             currentStretch += 1
+            appearances = [:]
+            nextAppearance = 0
             stretchTranslations = [:]
             handedOut = []
         }
