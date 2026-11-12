@@ -72,3 +72,31 @@ extension CaptionStyle.Mode {
         translationAvailable ? self : .originalAndTranslation
     }
 }
+
+extension AudioAvailability {
+    /// Audio newer than this counts as arriving.
+    public static let audioFreshness = 1.5
+
+    /// A writer silent for longer than this is taken to be gone.
+    public static let heartbeatPatience = 5.0
+
+    /// Works out the state of the broadcast from what the ring says.
+    ///
+    /// The broadcasting flag alone is not trusted: if the system ends the extension
+    /// without warning, the flag stays set. A broadcast only counts as running while
+    /// the writer has shown signs of life recently.
+    ///
+    /// - Parameters:
+    ///   - lastHeartbeat: when the writer last showed it is alive.
+    ///   - lastWrite: when audio was last written.
+    ///   - now: the current time, on the same clock as the other two.
+    public static func assess(
+        isBroadcasting: Bool,
+        lastHeartbeat: Double,
+        lastWrite: Double,
+        now: Double
+    ) -> AudioAvailability {
+        guard isBroadcasting, now - lastHeartbeat <= heartbeatPatience else { return .notBroadcasting }
+        return now - lastWrite < audioFreshness ? .receiving : .stalled
+    }
+}
