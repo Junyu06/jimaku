@@ -20,13 +20,15 @@ public struct CaptionLine: Equatable, Sendable {
 /// is what makes a caption that slides with every new character hard to read.
 ///
 /// Text that may still change is tentative: it is laid out after the settled text
-/// and replaced as a whole. It can be limited to its beginning, so that a preview
-/// of what is coming does not push out the settled lines the reader is on.
+/// and replaced as a whole. A row can be told not to give tentative text a line
+/// of its own; it is then left out when it does not fit after the settled text.
 public struct RollingRow: Equatable, Sendable {
     public let columns: Int
     public let lines: Int
-    /// At most this many columns of tentative text are shown. Nil shows all of it.
-    public let tentativeLimit: Int?
+    /// Whether tentative text may run on to further lines, rolling the row if
+    /// need be. If not, tentative text that does not fit on the line being filled
+    /// is not shown.
+    public let tentativeWraps: Bool
     /// How wide characters are in the font the row is drawn with.
     public let widths: GlyphWidths
 
@@ -40,10 +42,10 @@ public struct RollingRow: Equatable, Sendable {
     /// How many lines have rolled off the top.
     private var rolledOff = 0
 
-    public init(columns: Int, lines: Int, tentativeLimit: Int? = nil, widths: GlyphWidths = .estimated) {
+    public init(columns: Int, lines: Int, tentativeWraps: Bool = true, widths: GlyphWidths = .estimated) {
         self.columns = max(columns, 2)
         self.lines = max(lines, 1)
-        self.tentativeLimit = tentativeLimit
+        self.tentativeWraps = tentativeWraps
         self.widths = widths
     }
 
@@ -77,7 +79,7 @@ public struct RollingRow: Equatable, Sendable {
             closedCount += wrapped.count
         }
         closed.removeFirst(max(closed.count - lines, 0))
-        self.tentative = beginning(of: tentative.trimmed)
+        self.tentative = tentative.trimmed
         roll()
     }
 
@@ -105,7 +107,9 @@ public struct RollingRow: Equatable, Sendable {
         let added = (Self.joiner(between: open, and: tentative) + tentative).map {
             CaptionText.Cell(character: $0, isTentative: true, group: 2)
         }
-        return CaptionText.wrap(settled + added, columns: columns, widths: widths)
+        let withTentative = CaptionText.wrap(settled + added, columns: columns, widths: widths)
+        if tentativeWraps || withTentative.count <= 1 { return withTentative }
+        return CaptionText.wrap(settled, columns: columns, widths: widths)
     }
 
     /// Rolls far enough to show the newest line. A row does not roll back, with
@@ -114,19 +118,6 @@ public struct RollingRow: Equatable, Sendable {
     private mutating func roll() {
         let total = closedCount + openLines.count
         rolledOff = min(max(rolledOff, total - lines), max(total - 1, 0))
-    }
-
-    /// The beginning of `text` that fits the limit on tentative text.
-    private func beginning(of text: String) -> String {
-        guard let tentativeLimit else { return text }
-        var kept = ""
-        var width = 0.0
-        for character in text {
-            width += widths.width(of: character)
-            if width > Double(tentativeLimit) { break }
-            kept.append(character)
-        }
-        return kept.trimmed
     }
 
     /// A space goes between two pieces only where both sides are narrow

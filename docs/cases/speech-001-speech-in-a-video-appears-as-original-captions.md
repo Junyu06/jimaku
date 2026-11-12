@@ -12,6 +12,7 @@ status: not-run
 ## Evidence
 
 - 2026-11-12, physical iPad, earlier version: with 日语 selected and a Japanese short video playing, the floating window showed Japanese text for what was said. English was not reported. From the owner's screenshots.
+- 2026-11-12, physical iPad, the version with fixed lines: with 日语 selected and a Japanese short video playing, the original row showed Japanese text, the newest part dimmer. From the owner's screenshots.
 - Physical iPad, current version: not run.
 - Physical iPhone: not run.
 - 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0, with scripted text standing in for the recognizer (the simulator has no system speech model): text grew and settled in the floating window while Safari was in front. This exercises the transcript and the window, not speech recognition.

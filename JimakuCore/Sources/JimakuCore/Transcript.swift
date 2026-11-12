@@ -12,8 +12,9 @@ public enum RecognitionUpdate: Equatable, Sendable {
 /// The recognizer sends guesses that keep changing and, eventually, a final version.
 /// With fast continuous speech "eventually" can be twenty seconds or more, far too
 /// late for captions. So speech is kept in pieces while it goes on: once the front
-/// of the guess has stood unchanged for a moment, a sentence, a clause, or a run of
-/// words is cut off it and kept as an entry.
+/// of the guess has stood unchanged for a moment, a sentence is cut off it and kept
+/// as an entry. A sentence also ends where the speaker pauses, and one that runs on
+/// too long is cut at a clause.
 ///
 /// An entry never changes after that, whatever the recognizer says later. A caption
 /// that rewrites what the reader has already read cannot be followed. The price is
@@ -24,7 +25,9 @@ public enum RecognitionUpdate: Equatable, Sendable {
 /// ago, while the words stay.
 ///
 /// The rest of the guess is the speech in progress. It still follows the
-/// recognizer, and it can carry a provisional translation.
+/// recognizer. It is not translated until it is kept: a translation of half a
+/// sentence is often wrong, most of all from Japanese, where the verb comes last,
+/// and a reader who has read it is misled when the real one replaces it.
 public struct Transcript: Equatable, Sendable {
     /// One kept piece of speech and, once it arrives, its translation.
     public struct Entry: Equatable, Sendable, Identifiable {
@@ -39,17 +42,21 @@ public struct Transcript: Equatable, Sendable {
         }
     }
 
-    /// Where the speech in progress starts. A provisional translation made for one
-    /// place does not apply to another.
-    public struct Mark: Equatable, Sendable {
-        let stretch: Int
-        let spoken: Int
-    }
-
     /// How long, in seconds, the front of a guess must stand unchanged before it is
     /// kept. The recognizer corrects its newest words in its next burst of guesses,
     /// about a second later, and rarely after that.
     public static let stability = 0.8
+
+    /// The speaker has paused when the recognizer reports again and its guess
+    /// still says what it said `stability` seconds ago: a burst of guesses came
+    /// and brought nothing. What was said so far is then kept as it is. This
+    /// follows the recognizer's own pace, whatever it is.
+    ///
+    /// In case the recognizer reports nothing at all while the speaker is silent,
+    /// a guess that has stood this many seconds is taken for a pause without a
+    /// report. It has to be well above the gap between two bursts of guesses,
+    /// about a second where it was measured, or every gap would look like a pause.
+    public static let silence = 3.0
 
     /// A failed translation is retried only for the newest few entries.
     private static let retryReach = 3
@@ -62,9 +69,6 @@ public struct Transcript: Equatable, Sendable {
 
     private let rules: ChunkRules
 
-    /// The number of the stretch in progress. It goes up with every final result.
-    private var stretch = 0
-
     /// How many spoken characters of the stretch in progress are kept.
     private var keptSpoken = 0
 
@@ -73,15 +77,10 @@ public struct Transcript: Equatable, Sendable {
     private var guess: [Character] = []
     private var firstSeen: [Double] = []
 
-    private struct Provisional: Equatable, Sendable {
-        var text: String
-        var mark: Mark
-        /// Set when the speech it was made for has been kept: it stays on show
-        /// until an entry from this one on gets its own translation.
-        var bridgesFrom: Int?
-    }
-
-    private var provisional: Provisional?
+    /// The latest guess as it was reported, and when its spoken characters last
+    /// changed in any way, growing, shrinking, or being rewritten.
+    private var guessText = ""
+    private var lastChange = 0.0
 
     /// Entries whose translation failed and that the next update hands out again.
     private var retry: [Int] = []
@@ -90,56 +89,24 @@ public struct Transcript: Equatable, Sendable {
         self.rules = rules
     }
 
-    /// Where the speech in progress starts now.
-    public var pendingMark: Mark { Mark(stretch: stretch, spoken: keptSpoken) }
-
-    /// The provisional translation to show after the kept translations, if any.
-    public var pendingTranslation: String? {
-        guard let provisional else { return nil }
-        if provisional.bridgesFrom != nil { return provisional.text }
-        return provisional.mark == pendingMark && !pending.isEmpty ? provisional.text : nil
-    }
-
     /// Takes in a recognizer update that arrived at `time`, in seconds on any
     /// steady clock. Returns the entries to translate, oldest first: the ones just
     /// kept, and before them any whose translation failed and can be tried again.
     @discardableResult
     public mutating func apply(_ update: RecognitionUpdate, at time: Double) -> [Entry] {
-        let before = pendingMark
         let kept: [Entry]
         switch update {
         case .partial(let text):
-            let stable = noteGuess(text, at: time)
-            let rest = CaptionText.dropping(spoken: keptSpoken, from: text)
-            let cut = CaptionText.chunks(
-                in: rest,
-                stableSpoken: max(stable - keptSpoken, 0),
-                isComplete: false,
-                rules: rules
-            )
-            kept = keep(cut.chunks)
-            keptSpoken += cut.spoken
-            pending = cut.rest
+            kept = take(text, at: time)
         case .final(let text):
             let rest = CaptionText.dropping(spoken: keptSpoken, from: text)
             let cut = CaptionText.chunks(in: rest, stableSpoken: 0, isComplete: true, rules: rules)
             kept = keep(cut.chunks)
             pending = ""
-            stretch += 1
             keptSpoken = 0
             guess = []
             firstSeen = []
-        }
-
-        if var current = provisional, current.bridgesFrom == nil, current.mark != pendingMark {
-            if current.mark == before, let first = kept.first {
-                // Its speech was just kept. Keep showing it until that entry has a
-                // translation of its own, so the row does not go blank in between.
-                current.bridgesFrom = first.id
-                provisional = current
-            } else {
-                provisional = nil
-            }
+            guessText = ""
         }
 
         let again = retry.compactMap { id in entries[id].translation == nil ? entries[id] : nil }
@@ -147,14 +114,42 @@ public struct Transcript: Equatable, Sendable {
         return again + kept
     }
 
+    /// Time has passed without an update. If the latest guess has stood for
+    /// `silence` seconds, the speaker has paused and the speech in progress is kept. Returns
+    /// the entries just kept; unlike `apply`, it does not hand out entries whose
+    /// translation failed, so calling it often does not retry them often.
+    @discardableResult
+    public mutating func elapse(to time: Double) -> [Entry] {
+        guard !pending.isEmpty, time - lastChange >= Self.silence else { return [] }
+        return take(guessText, at: time, pauseAfter: Self.silence)
+    }
+
+    /// Takes in a guess, or the same guess again at a later time.
+    ///
+    /// - Parameter pauseAfter: how long the guess must have stood unchanged for
+    ///   the speaker to count as paused.
+    private mutating func take(_ text: String, at time: Double, pauseAfter: Double = stability) -> [Entry] {
+        let stable = noteGuess(text, at: time)
+        let rest = CaptionText.dropping(spoken: keptSpoken, from: text)
+        let cut = CaptionText.chunks(
+            in: rest,
+            stableSpoken: max(stable - keptSpoken, 0),
+            // Nothing has changed for a moment: the speaker has paused, so the end
+            // of what was said ends a piece.
+            isComplete: !guess.isEmpty && time - lastChange >= pauseAfter,
+            rules: rules
+        )
+        let kept = keep(cut.chunks)
+        keptSpoken += cut.spoken
+        pending = cut.rest
+        return kept
+    }
+
     /// Sets the translation of the entry with this identifier.
     public mutating func setTranslation(_ translation: String, for id: Int) {
         let text = translation.trimmed
         guard !text.isEmpty, entries.indices.contains(id) else { return }
         entries[id].translation = text
-        if let from = provisional?.bridgesFrom, id >= from {
-            provisional = nil
-        }
     }
 
     /// The translation of an entry failed. If the entry is recent, the next update
@@ -162,14 +157,6 @@ public struct Transcript: Equatable, Sendable {
     public mutating func translationFailed(for id: Int) {
         guard entries.indices.contains(id), entries.count - id <= Self.retryReach, !retry.contains(id) else { return }
         retry.append(id)
-    }
-
-    /// Offers a provisional translation of the speech in progress as it was at
-    /// `mark`. It is taken only if the speech in progress still starts there.
-    public mutating func setPendingTranslation(_ translation: String, at mark: Mark) {
-        let text = translation.trimmed
-        guard !text.isEmpty, mark == pendingMark, !pending.isEmpty else { return }
-        provisional = Provisional(text: text, mark: mark, bridgesFrom: nil)
     }
 
     public mutating func reset() {
@@ -185,7 +172,11 @@ public struct Transcript: Equatable, Sendable {
             guard old == new else { break }
             same += 1
         }
+        if same != guess.count || same != spoken.count {
+            lastChange = time
+        }
         guess = Array(spoken)
+        guessText = text
         firstSeen = Array(firstSeen.prefix(same)) + Array(repeating: time, count: guess.count - same)
         return firstSeen.firstIndex { time - $0 < Self.stability } ?? firstSeen.count
     }

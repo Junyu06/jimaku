@@ -86,7 +86,9 @@ public struct CaptionLayout: Equatable, Sendable {
 }
 
 /// What the caption window shows for a transcript: each row filling line by line
-/// and rolling up, with the speech in progress as tentative text at its end.
+/// and rolling up. The original row ends with the speech in progress as tentative
+/// text. The translation row shows finished translations only; while speech is
+/// waiting to be translated it ends with a waiting mark, if there is room.
 ///
 /// The board only ever adds to what it shows. A translation that arrives after a
 /// later one is already on the row is left out of the window; putting it in the
@@ -100,22 +102,29 @@ public struct CaptionBoard: Equatable, Sendable {
     private var nextOriginal = 0
     private var nextTranslation = 0
 
+    /// Shown at the end of the translation row while speech is waiting to be
+    /// translated.
+    public static let waitingMark = "…"
+
     /// How many recent entries are laid out again when the layout changes.
     private static let recall = 4
 
     public init(layout: CaptionLayout) {
         self.layout = layout
         originalRow = layout.original.map { RollingRow(columns: $0.columns, lines: $0.lines, widths: $0.widths) }
-        // The provisional translation is a preview and the part of it most likely to
-        // change is its end, so only one line's worth of its beginning is shown.
+        // The waiting mark never gets a line of its own.
         translationRow = layout.translation.map {
-            RollingRow(columns: $0.columns, lines: $0.lines, tentativeLimit: $0.columns, widths: $0.widths)
+            RollingRow(columns: $0.columns, lines: $0.lines, tentativeWraps: false, widths: $0.widths)
         }
     }
 
     /// Takes in what is new in `transcript` since the last call. A board follows
     /// one transcript from its start; a new or reset transcript needs a new board.
-    public mutating func show(_ transcript: Transcript) {
+    ///
+    /// - Parameter translating: whether kept speech is waiting to be translated
+    ///   or being translated now. With speech in progress, it decides whether
+    ///   the waiting mark is shown.
+    public mutating func show(_ transcript: Transcript, translating: Bool = false) {
         let entries = transcript.entries
         if entries.count < max(nextOriginal, nextTranslation) {
             // Not the transcript this board was following. Start over rather than
@@ -131,16 +140,17 @@ public struct CaptionBoard: Equatable, Sendable {
             translations = entries[nextTranslation...newest].compactMap(\.translation)
             nextTranslation = newest + 1
         }
-        translationRow?.update(appending: translations, tentative: transcript.pendingTranslation ?? "")
+        let isWaiting = !transcript.pending.isEmpty || translating
+        translationRow?.update(appending: translations, tentative: isWaiting ? Self.waitingMark : "")
     }
 
     /// Changes the layout and lays the most recent captions out again.
-    public mutating func relay(_ layout: CaptionLayout, showing transcript: Transcript) {
+    public mutating func relay(_ layout: CaptionLayout, showing transcript: Transcript, translating: Bool = false) {
         self = CaptionBoard(layout: layout)
         let start = max(transcript.entries.count - Self.recall, 0)
         nextOriginal = start
         nextTranslation = start
-        show(transcript)
+        show(transcript, translating: translating)
     }
 
     /// The rows of the layout, top to bottom, each with the lines it shows now.

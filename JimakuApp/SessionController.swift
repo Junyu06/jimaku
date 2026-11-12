@@ -61,12 +61,6 @@ final class SessionController {
     /// stops waiting for it.
     private static let windowPatience: Duration = .seconds(5)
 
-    /// How long to wait after a recognizer update before offering the speech in
-    /// progress for a provisional translation. Guesses arrive in bursts, several
-    /// within a few milliseconds; this lets a burst finish so its last guess is the
-    /// one translated.
-    private static let burstPatience: Duration = .milliseconds(150)
-
     private let audio = AudioMonitor()
     private let recognizer: any SpeechRecognizing
     private let languagePackSource: any TranslatorSource
@@ -79,11 +73,6 @@ final class SessionController {
     private var recognition: CaptionPlaceholder.Readiness = .preparing
     private var pipeline = TranslationPipeline()
     private var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
-
-    /// Where the speech in progress started when it was last offered to the
-    /// pipeline. A provisional translation is delivered with this mark.
-    private var offeredMark: Transcript.Mark?
-    private var pendingOfferTask: Task<Void, Never>?
 
     /// Character widths already measured, by row role and column count.
     private var measuredWidths: [String: GlyphWidths] = [:]
@@ -226,9 +215,6 @@ final class SessionController {
         translatorToken = nil
         translator = nil
         pipeline.reset()
-        pendingOfferTask?.cancel()
-        pendingOfferTask = nil
-        offeredMark = nil
         recognition = .preparing
 
         audioTask?.cancel()
@@ -276,6 +262,14 @@ final class SessionController {
                 self.window.show(audioLevel: hasAudio ? AudioLevel.meter(for: samples) : nil)
                 if self.recognition == .ready {
                     self.recognizer.append(samples)
+                    // A pause is noticed here too, in case the recognizer sends
+                    // nothing while the speaker is silent.
+                    let kept = self.transcript.elapse(to: ProcessInfo.processInfo.systemUptime)
+                    if !kept.isEmpty {
+                        kept.forEach { self.pipeline.settle($0) }
+                        self.pump()
+                        self.refreshWindow()
+                    }
                 }
                 elapsed += interval
                 try? await Task.sleep(for: .seconds(interval))
@@ -300,7 +294,11 @@ final class SessionController {
                 self.refreshWindow()
                 for try await update in updates {
                     guard self.sessionGeneration.isCurrent(token) else { return }
-                    self.take(update, for: token)
+                    for kept in self.transcript.apply(update, at: ProcessInfo.processInfo.systemUptime) {
+                        self.pipeline.settle(kept)
+                    }
+                    self.pump()
+                    self.refreshWindow()
                 }
                 // The recognizer stopped on its own while the session is still running.
                 guard self.sessionGeneration.isCurrent(token) else { return }
@@ -314,34 +312,6 @@ final class SessionController {
                 self.refreshWindow()
             }
         }
-    }
-
-    /// Takes in a recognizer update: keeps what has become stable, sends it to be
-    /// translated, and shows the result.
-    private func take(_ update: RecognitionUpdate, for token: Generation.Token) {
-        let before = transcript.pendingMark
-        for kept in transcript.apply(update, at: ProcessInfo.processInfo.systemUptime) {
-            pipeline.settle(kept)
-        }
-        if transcript.pending.isEmpty || transcript.pendingMark != before {
-            // What the pipeline was offered has been kept or is gone.
-            pendingOfferTask?.cancel()
-            pendingOfferTask = nil
-            pipeline.offerPending("")
-            offeredMark = nil
-        }
-        if !transcript.pending.isEmpty, pendingOfferTask == nil {
-            pendingOfferTask = Task { [weak self] in
-                try? await Task.sleep(for: Self.burstPatience)
-                guard !Task.isCancelled, let self, self.sessionGeneration.isCurrent(token) else { return }
-                self.pendingOfferTask = nil
-                self.pipeline.offerPending(self.transcript.pending)
-                self.offeredMark = self.transcript.pendingMark
-                self.pump()
-            }
-        }
-        pump()
-        refreshWindow()
     }
 
     // MARK: Translation
@@ -382,51 +352,35 @@ final class SessionController {
         }
     }
 
-    /// Sends the next thing to translate, if the pipeline has one: a kept piece of
-    /// speech, or else the speech still in progress.
+    /// Sends the next kept piece of speech to the translator, if one is waiting.
     private func pump() {
-        guard let translator, let token = translatorToken, let job = pipeline.takeNext() else { return }
-        let source =
-            switch job {
-            case .entry(let entry): entry.original
-            case .pending(let text): text
-            }
-        let mark = offeredMark
+        guard let translator, let token = translatorToken, let entry = pipeline.takeNext() else { return }
         Task { [weak self] in
             let result: Result<String, Error>
             do {
-                result = .success(try await translator.translate(source))
+                result = .success(try await translator.translate(entry.original))
             } catch {
                 result = .failure(error)
             }
             // The engine changed or the session ended while this was being translated.
             guard let self, self.translatorGeneration.isCurrent(token) else { return }
-            switch (job, result) {
-            case (.entry(let entry), .success(let translation)):
-                self.transcript.setTranslation(translation, for: entry.id)
-            case (.pending, .success(let translation)):
-                if let mark {
-                    self.transcript.setPendingTranslation(translation, at: mark)
-                }
-            case (.entry(let entry), .failure):
-                // Let a later recognizer update hand this piece out again.
-                self.transcript.translationFailed(for: entry.id)
-            case (.pending, .failure):
-                break
-            }
             switch result {
-            case .success:
+            case .success(let translation):
+                self.transcript.setTranslation(translation, for: entry.id)
                 self.pipeline.finishCurrent(succeeded: true)
                 self.translationNotice = nil
                 self.refreshWindow()
                 self.pump()
             case .failure(let error):
-                // Translation counts as unavailable until one succeeds, so the window
-                // falls back to the original line instead of waiting. The next
-                // recognizer update tries again; retrying at once would spin.
+                // Translation counts as unavailable until one succeeds, so the
+                // window falls back to the original. This piece is handed out
+                // again by a later recognizer update; retrying it at once would
+                // spin. Whatever else is waiting goes on now.
+                self.transcript.translationFailed(for: entry.id)
                 self.pipeline.finishCurrent(succeeded: false)
                 self.translationNotice = "翻译出错：\(error.localizedDescription)"
                 self.refreshWindow()
+                self.pump()
             }
         }
     }
@@ -466,9 +420,9 @@ final class SessionController {
             return
         }
         if layout == board.layout {
-            board.show(transcript)
+            board.show(transcript, translating: pipeline.hasWork)
         } else {
-            board.relay(layout, showing: transcript)
+            board.relay(layout, showing: transcript, translating: pipeline.hasWork)
         }
         if board.isEmpty {
             let available = pipeline.isTranslationAvailable

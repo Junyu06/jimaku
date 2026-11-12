@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: accepted
+status: superseded in part by 2026-11-12-translate-a-sentence-only-when-it-has-ended.md. The fixed lines that roll up still stand. The translation row no longer shows a provisional translation; it shows a waiting mark instead.
 supersedes: the sentence "Both caption rows run on like a ticker and show their end" in 2026-11-12-translate-speech-while-it-is-still-in-progress.md
 
 # Lay captions out in fixed lines that roll up

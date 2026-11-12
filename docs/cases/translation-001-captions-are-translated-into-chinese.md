@@ -6,7 +6,7 @@ status: not-run
 # Captions are translated into Chinese
 
 - Input: on an iPhone and an iPad with the English, Japanese, and Simplified Chinese translation languages downloaded: start a session, then watch an English video and a Japanese video in a video app and one video in a social feed app, two to three minutes each.
-- Expected result: the floating window shows the original line on top and a Simplified Chinese line below. The Chinese for a piece of speech appears a second or two after it was said, stays while the next is spoken, and can be followed by a reader. Without the language pack downloaded, the app says which languages to download and keeps showing original-language captions.
+- Expected result: the floating window shows the original line on top and a Simplified Chinese line below. The Chinese for a sentence appears soon after the sentence ends, stays while the next is spoken, and can be followed by a reader. Without the language pack downloaded, the app says which languages to download and keeps showing original-language captions.
 - Property: kept speech is translated on the device with the system language packs while the app is in the background.
 
 ## Evidence
