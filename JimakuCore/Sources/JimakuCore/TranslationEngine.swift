@@ -1,8 +1,8 @@
 /// What does the translating.
 public enum TranslationEngine: String, CaseIterable, Equatable, Sendable {
-    /// The system's downloaded translation language packs. Fast and light.
+    /// The system's downloaded translation language packs.
     case languagePack
-    /// The on-device Apple Intelligence model. Slower, reads more naturally.
+    /// The on-device Apple Intelligence model.
     case appleIntelligence
 }
 
@@ -28,14 +28,22 @@ public enum TranslationPrompt {
     /// Reduces a model's reply to the translation itself: models sometimes add a
     /// label, wrap the answer in quotes, or append a note.
     public static func clean(_ response: String) -> String {
-        var text = response.trimmed
-        if let paragraphEnd = text.firstRange(of: "\n\n") {
-            text = String(text[..<paragraphEnd.lowerBound]).trimmed
-        }
+        var text = response.replacing("\r\n", with: "\n").trimmed
+
+        // A leading label, possibly on a line of its own.
         for label in labels where text.hasPrefix(label) {
             text = String(text.dropFirst(label.count)).trimmed
             break
         }
+
+        // Anything after a blank line is commentary, not the translation.
+        if let paragraphEnd = text.firstRange(of: "\n\n") {
+            text = String(text[..<paragraphEnd.lowerBound]).trimmed
+        }
+
+        // A caption is one line.
+        text = text.split(separator: "\n").map { String($0).trimmed }.joined(separator: " ")
+
         for (opening, closing) in quotePairs
         where text.count >= 2 && text.first == opening && text.last == closing {
             let inner = text.dropFirst().dropLast()

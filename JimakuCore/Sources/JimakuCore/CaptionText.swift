@@ -11,8 +11,12 @@ public enum CaptionText {
     ///
     /// Live speech grows at the end, so the end is the part worth showing. Text with
     /// spaces is cut between words; text without them is cut between characters.
+    ///
+    /// Surrounding whitespace is ignored. A width that leaves no room returns nothing.
     public static func tail(of text: String, width limit: Int) -> String {
+        let text = text.trimmed
         guard width(of: text) > limit else { return text }
+        guard limit > 0 else { return "" }
 
         // One column is reserved for the ellipsis.
         var remaining = limit - 1
