@@ -63,6 +63,46 @@ struct TranscriptRevisionTests {
     }
 }
 
+/// More rewrites found in the second review: the settled part itself changes length.
+@Suite("Transcript when the settled part is rewritten")
+struct TranscriptSettledPartRewrittenTests {
+    private func originals(_ updates: [RecognitionUpdate]) -> [String] {
+        var transcript = Transcript()
+        for update in updates { transcript.apply(update) }
+        return transcript.entries.map(\.original)
+    }
+
+    @Test("Japanese: a removed sentence mark does not cost the next character")
+    func japaneseMarkRemoved() {
+        #expect(originals([.partial("そうです。はい"), .partial("そうですはい"), .final("そうですはい。")]) == ["そうです。", "はい。"])
+    }
+
+    @Test("Japanese: a shortened settled sentence does not cost what follows")
+    func japaneseSettledShortened() {
+        #expect(originals([.partial("そうです。はい"), .partial("そう。はい"), .final("そう。はい。")]) == ["そうです。", "はい。"])
+    }
+
+    @Test("English: a shortened settled sentence does not cost what follows")
+    func englishSettledShortened() {
+        #expect(originals([.partial("Good morning. Hello"), .partial("Hi. Hello"), .final("Hi. Hello.")]) == ["Good morning.", "Hello."])
+    }
+
+    @Test("English: a lengthened settled sentence is not settled again")
+    func englishSettledLengthened() {
+        #expect(originals([.partial("Hi. world"), .partial("Hello. world"), .final("Hello. world.")]) == ["Hi.", "world."])
+    }
+
+    @Test("A rewrite of the settled part followed by more speech keeps going from the right place")
+    func rewriteThenGrowth() {
+        let result = originals([
+            .partial("Good morning. Hello"),
+            .partial("Hi. Hello there. How"),
+            .final("Hi. Hello there. How are you."),
+        ])
+        #expect(result == ["Good morning.", "Hello there.", "How are you."])
+    }
+}
+
 @Suite("Sentence endings in English")
 struct EnglishSentenceEndingTests {
     @Test("A title before a name does not end a sentence")
@@ -122,6 +162,40 @@ struct TranslationPipelineReviewTests {
         #expect(pipeline.takeNext() == .entry(entry(1)))
         pipeline.finishCurrent(succeeded: true)
         #expect(pipeline.isTranslationAvailable)
+    }
+
+    @Test("A provisional translation that fails also makes translation unavailable")
+    func pendingFailure() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you doing")
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent(succeeded: false)
+        #expect(pipeline.isTranslationAvailable == false)
+    }
+
+    @Test("A provisional translation that succeeds restores availability")
+    func pendingSuccessRecovers() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.settle(entry(0))
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent(succeeded: false)
+        pipeline.offerPending("How are you doing")
+        #expect(pipeline.takeNext() == .pending("How are you doing"))
+        pipeline.finishCurrent(succeeded: true)
+        #expect(pipeline.isTranslationAvailable)
+    }
+
+    @Test("After a failure the same speech in progress is offered again, so translation can recover")
+    func pendingRetriedAfterFailure() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you doing")
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent(succeeded: false)
+        pipeline.offerPending("How are you doing")
+        #expect(pipeline.takeNext() == .pending("How are you doing"))
     }
 
     @Test("Preparing a translator again clears an earlier failure")
