@@ -41,4 +41,5 @@ Running reliably for a full hour is not part of this acceptance.
 
 ## Status
 
-Not implemented. Not verified.
+- Floating caption window: implemented with scripted demo captions. Seen in an iPad simulator; not verified on a device.
+- Audio capture, speech recognition, translation, engine switch, text size, one-line mode, session log: not implemented.
