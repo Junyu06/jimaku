@@ -71,3 +71,31 @@ struct DemoCaptionsTests {
         #expect(DemoCaptions.lines(at: -5) == DemoCaptions.script[0])
     }
 }
+
+@Suite("CaptionLines whitespace")
+struct CaptionLinesWhitespaceTests {
+    @Test("A whitespace-only translation counts as absent")
+    func whitespaceTranslation() {
+        let lines = CaptionLines(original: "Hello", translation: " \t ")
+        #expect(lines.rows == [CaptionRow(text: "Hello", role: .primary)])
+    }
+
+    @Test("Whitespace on both sides leaves no rows")
+    func whitespaceBoth() {
+        #expect(CaptionLines(original: " ", translation: "\n").rows.isEmpty)
+    }
+
+    @Test("Text is drawn without its surrounding whitespace")
+    func surroundingWhitespaceIsTrimmed() {
+        let lines = CaptionLines(original: "  Hello \n", translation: "\t你好  ")
+        #expect(lines.rows.map(\.text) == ["Hello", "你好"])
+    }
+
+    @Test("Unicode spaces count as whitespace")
+    func unicodeWhitespace() {
+        let ideographicSpace = "\u{3000}"
+        let noBreakSpace = "\u{00A0}"
+        let lines = CaptionLines(original: ideographicSpace + noBreakSpace, translation: ideographicSpace + "你好")
+        #expect(lines.rows == [CaptionRow(text: "你好", role: .primary)])
+    }
+}
