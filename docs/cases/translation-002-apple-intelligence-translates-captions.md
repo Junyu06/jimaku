@@ -5,8 +5,8 @@ status: simulated
 
 # Apple Intelligence translates captions
 
-- Input: set 翻译 (Translation) to Apple Intelligence, start a session, and let speech settle. Switch back to 语言包 (language packs) while the session runs.
-- Expected result: each settled sentence gets a Simplified Chinese line produced by the on-device model. Switching the engine during a session keeps captions coming. If the model is unavailable, the app says so and keeps showing original-language captions.
+- Input: set 翻译 (Translation) to Apple Intelligence, start a session, and let it run. Switch back to 语言包 (language packs) while the session runs.
+- Expected result: each kept piece of speech gets a Simplified Chinese line produced by the on-device model. Switching the engine during a session keeps captions coming. If the model is unavailable, the app says so and keeps showing original-language captions.
 - Property: the translation engine can be chosen and changed without restarting the session.
 
 ## Evidence

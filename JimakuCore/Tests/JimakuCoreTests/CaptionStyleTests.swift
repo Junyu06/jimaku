@@ -10,12 +10,9 @@ struct CaptionStyleTests {
         #expect(style.mode == .originalAndTranslation)
     }
 
-    @Test("Text sizes are offered small to large and scale accordingly")
+    @Test("Text sizes are offered small to large")
     func textSizes() {
         #expect(CaptionStyle.TextSize.allCases == [.small, .medium, .large])
-        #expect(CaptionStyle.TextSize.small.scale < CaptionStyle.TextSize.medium.scale)
-        #expect(CaptionStyle.TextSize.medium.scale == 1)
-        #expect(CaptionStyle.TextSize.medium.scale < CaptionStyle.TextSize.large.scale)
     }
 
     @Test("Style choices survive being stored and read back")
@@ -26,24 +23,6 @@ struct CaptionStyleTests {
         for mode in CaptionStyle.Mode.allCases {
             #expect(CaptionStyle.Mode(rawValue: mode.rawValue) == mode)
         }
-    }
-
-    @Test("Both-lines mode shows the original above the translation")
-    func bothLinesMode() {
-        let lines = CaptionLines(original: "Hello", translation: "你好")
-        #expect(lines.rows(in: .originalAndTranslation) == lines.rows)
-    }
-
-    @Test("Translation-only mode shows just the translation")
-    func translationOnlyMode() {
-        let lines = CaptionLines(original: "Hello", translation: "你好")
-        #expect(lines.rows(in: .translationOnly) == [CaptionRow(text: "你好", role: .primary)])
-    }
-
-    @Test("Translation-only mode shows nothing until a translation exists")
-    func translationOnlyWithoutTranslation() {
-        let lines = CaptionLines(original: "Hello", translation: "")
-        #expect(lines.rows(in: .translationOnly).isEmpty)
     }
 }
 

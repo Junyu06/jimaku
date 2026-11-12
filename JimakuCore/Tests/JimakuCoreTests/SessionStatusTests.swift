@@ -118,22 +118,4 @@ struct ReviewRegressionTests {
     func innerLineBreak() {
         #expect(TranslationPrompt.clean("你好，\n世界。") == "你好， 世界。")
     }
-
-    @Test("A width that leaves no room returns nothing")
-    func tailWithoutRoom() {
-        #expect(CaptionText.tail(of: "Hello", width: 0) == "")
-        #expect(CaptionText.tail(of: "Hello", width: -3) == "")
-        #expect(CaptionText.tail(of: "Hello", width: Int.min) == "")
-    }
-
-    @Test("Text that exactly fits is unchanged")
-    func tailExactFit() {
-        #expect(CaptionText.tail(of: "Hello", width: 5) == "Hello")
-        #expect(CaptionText.tail(of: "字幕", width: 4) == "字幕")
-    }
-
-    @Test("Trailing whitespace does not cost the last word")
-    func tailTrailingWhitespace() {
-        #expect(CaptionText.tail(of: "abcdefghij ", width: 6) == "…fghij")
-    }
 }

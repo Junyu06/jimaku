@@ -8,8 +8,9 @@ import os
 /// and shows both.
 ///
 /// The rules live in JimakuCore: `CaptionSession` for the lifecycle, `Generation` for
-/// telling stale asynchronous results from current ones, `TranslationPipeline` for
-/// what gets translated when, and `CaptionPlaceholder` for what to say while there
+/// telling stale asynchronous results from current ones, `Transcript` for what was
+/// said, `TranslationPipeline` for what gets translated when, `CaptionBoard` for
+/// how captions are laid out, and `CaptionPlaceholder` for what to say while there
 /// is no caption. This class connects them to the system.
 @MainActor
 @Observable
@@ -44,6 +45,7 @@ final class SessionController {
         didSet {
             UserDefaults.standard.set(style.textSize.rawValue, forKey: Self.textSizeKey)
             UserDefaults.standard.set(style.mode.rawValue, forKey: Self.modeKey)
+            guard style != oldValue else { return }
             refreshWindow()
         }
     }
@@ -59,6 +61,12 @@ final class SessionController {
     /// stops waiting for it.
     private static let windowPatience: Duration = .seconds(5)
 
+    /// How long to wait after a recognizer update before offering the speech in
+    /// progress for a provisional translation. Guesses arrive in bursts, several
+    /// within a few milliseconds; this lets a burst finish so its last guess is the
+    /// one translated.
+    private static let burstPatience: Duration = .milliseconds(150)
+
     private let audio = AudioMonitor()
     private let recognizer: any SpeechRecognizing
     private let languagePackSource: any TranslatorSource
@@ -70,6 +78,15 @@ final class SessionController {
 
     private var recognition: CaptionPlaceholder.Readiness = .preparing
     private var pipeline = TranslationPipeline()
+    private var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
+
+    /// Where the speech in progress started when it was last offered to the
+    /// pipeline. A provisional translation is delivered with this mark.
+    private var offeredMark: Transcript.Mark?
+    private var pendingOfferTask: Task<Void, Never>?
+
+    /// Character widths already measured, by row role and column count.
+    private var measuredWidths: [String: GlyphWidths] = [:]
     private var translator: (any PreparedTranslator)?
 
     /// Current for the running session; stale once it ends.
@@ -109,9 +126,7 @@ final class SessionController {
         window.onFailedToStart = { [weak self] error in self?.windowFailedToStart(error) }
         window.onClosed = { [weak self] in self?.windowDidClose() }
         window.prepare()
-        window.show(style: style)
-        // Before a session, the window previews what captions look like.
-        window.show(DemoCaptions.lines(at: 0))
+        refreshWindow()
         audioStatus = audio.status
     }
 
@@ -135,8 +150,9 @@ final class SessionController {
         windowNotice = nil
         recognitionNotice = nil
         translationNotice = nil
-        transcript.reset()
+        transcript = Transcript(rules: language.chunkRules)
         pipeline.reset()
+        board = CaptionBoard(layout: layout)
         recognition = .preparing
         let token = sessionGeneration.advance()
         audio.beginCapture()
@@ -210,6 +226,9 @@ final class SessionController {
         translatorToken = nil
         translator = nil
         pipeline.reset()
+        pendingOfferTask?.cancel()
+        pendingOfferTask = nil
+        offeredMark = nil
         recognition = .preparing
 
         audioTask?.cancel()
@@ -281,12 +300,7 @@ final class SessionController {
                 self.refreshWindow()
                 for try await update in updates {
                     guard self.sessionGeneration.isCurrent(token) else { return }
-                    for settled in self.transcript.apply(update) {
-                        self.pipeline.settle(settled)
-                    }
-                    self.pipeline.offerPending(self.transcript.pending)
-                    self.pump()
-                    self.refreshWindow()
+                    self.take(update, for: token)
                 }
                 // The recognizer stopped on its own while the session is still running.
                 guard self.sessionGeneration.isCurrent(token) else { return }
@@ -300,6 +314,34 @@ final class SessionController {
                 self.refreshWindow()
             }
         }
+    }
+
+    /// Takes in a recognizer update: keeps what has become stable, sends it to be
+    /// translated, and shows the result.
+    private func take(_ update: RecognitionUpdate, for token: Generation.Token) {
+        let before = transcript.pendingMark
+        for kept in transcript.apply(update, at: ProcessInfo.processInfo.systemUptime) {
+            pipeline.settle(kept)
+        }
+        if transcript.pending.isEmpty || transcript.pendingMark != before {
+            // What the pipeline was offered has been kept or is gone.
+            pendingOfferTask?.cancel()
+            pendingOfferTask = nil
+            pipeline.offerPending("")
+            offeredMark = nil
+        }
+        if !transcript.pending.isEmpty, pendingOfferTask == nil {
+            pendingOfferTask = Task { [weak self] in
+                try? await Task.sleep(for: Self.burstPatience)
+                guard !Task.isCancelled, let self, self.sessionGeneration.isCurrent(token) else { return }
+                self.pendingOfferTask = nil
+                self.pipeline.offerPending(self.transcript.pending)
+                self.offeredMark = self.transcript.pendingMark
+                self.pump()
+            }
+        }
+        pump()
+        refreshWindow()
     }
 
     // MARK: Translation
@@ -340,8 +382,8 @@ final class SessionController {
         }
     }
 
-    /// Sends the next thing to translate, if the pipeline has one: a settled sentence,
-    /// or else the speech still in progress.
+    /// Sends the next thing to translate, if the pipeline has one: a kept piece of
+    /// speech, or else the speech still in progress.
     private func pump() {
         guard let translator, let token = translatorToken, let job = pipeline.takeNext() else { return }
         let source =
@@ -349,6 +391,7 @@ final class SessionController {
             case .entry(let entry): entry.original
             case .pending(let text): text
             }
+        let mark = offeredMark
         Task { [weak self] in
             let result: Result<String, Error>
             do {
@@ -360,12 +403,14 @@ final class SessionController {
             guard let self, self.translatorGeneration.isCurrent(token) else { return }
             switch (job, result) {
             case (.entry(let entry), .success(let translation)):
-                self.transcript.setTranslation(translation, for: entry)
-            case (.pending(let text), .success(let translation)):
-                self.transcript.setPendingTranslation(translation, of: text)
+                self.transcript.setTranslation(translation, for: entry.id)
+            case (.pending, .success(let translation)):
+                if let mark {
+                    self.transcript.setPendingTranslation(translation, at: mark)
+                }
             case (.entry(let entry), .failure):
-                // Let a later recognizer update hand this sentence out again.
-                self.transcript.translationFailed(for: entry)
+                // Let a later recognizer update hand this piece out again.
+                self.transcript.translationFailed(for: entry.id)
             case (.pending, .failure):
                 break
             }
@@ -388,28 +433,55 @@ final class SessionController {
 
     // MARK: The window's content
 
-    /// Shows the current captions, or one line saying what the session is waiting
-    /// for when there are none yet.
-    private func refreshWindow() {
-        // Translation-only makes no sense when translation cannot run.
-        let mode = style.mode.effective(translationAvailable: pipeline.isTranslationAvailable)
-        window.show(style: CaptionStyle(textSize: style.textSize, mode: mode))
+    /// The layout for the current style. When translation cannot run, the original
+    /// takes the main row.
+    private var layout: CaptionLayout {
+        var layout = CaptionLayout(
+            style: style,
+            translationAvailable: !session.isActive || pipeline.isTranslationAvailable
+        )
+        let original = widths(for: layout.original)
+        let translation = widths(for: layout.translation)
+        layout.original?.widths = original
+        layout.translation?.widths = translation
+        return layout
+    }
 
-        // Outside a session the window keeps its preview caption.
-        guard session.isActive else { return }
-        let lines = transcript.currentLines
-        if lines.rows(in: mode).isEmpty {
+    /// The measured character widths for a row, measured once per kind of row.
+    private func widths(for row: CaptionLayout.Row?) -> GlyphWidths {
+        guard let row else { return .estimated }
+        let key = "\(row.role)-\(row.columns)"
+        if let known = measuredWidths[key] { return known }
+        let measured = CaptionFrameRenderer.glyphWidths(role: row.role, columns: row.columns)
+        measuredWidths[key] = measured
+        return measured
+    }
+
+    /// Shows the current captions, or one line saying what the session is waiting
+    /// for when there are none yet. Outside a session, shows a sample caption.
+    private func refreshWindow() {
+        let layout = layout
+        guard session.isActive else {
+            window.show(.rows(CaptionBoard.rows(for: DemoCaptions.lines(at: 0), layout: layout)))
+            return
+        }
+        if layout == board.layout {
+            board.show(transcript)
+        } else {
+            board.relay(layout, showing: transcript)
+        }
+        if board.isEmpty {
+            let available = pipeline.isTranslationAvailable
             let placeholder = CaptionPlaceholder.choose(
                 recognition: recognition,
                 audio: audioStatus,
-                translation: pipeline.isTranslationAvailable ? pipeline.readiness : .failed,
-                mode: mode,
+                translation: available ? pipeline.readiness : .failed,
+                mode: style.mode.effective(translationAvailable: available),
                 hasSpeech: !transcript.entries.isEmpty || !transcript.pending.isEmpty
             )
-            // The waiting line goes in the translation slot so it shows in both display modes.
-            window.show(CaptionLines(original: "", translation: text(for: placeholder)))
+            window.show(.notice(text(for: placeholder)))
         } else {
-            window.show(lines)
+            window.show(.rows(board.rows))
         }
     }
 

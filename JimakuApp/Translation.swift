@@ -69,23 +69,20 @@ private final class LanguagePackTranslator: PreparedTranslator {
 }
 
 #if targetEnvironment(simulator)
-    /// The simulator has no translation language packs, so this looks sentences up in
-    /// the demo script. Simulator only.
+    /// The simulator has no translation language packs, so this looks pieces of
+    /// the demo speech up in its prepared translation. Simulator only.
     @MainActor
     final class ScriptedSource: TranslatorSource, PreparedTranslator {
-        func prepare(from language: SourceLanguage) async throws -> any PreparedTranslator { self }
+        private var speech: [CaptionLines] = []
+
+        func prepare(from language: SourceLanguage) async throws -> any PreparedTranslator {
+            speech = DemoCaptions.speech(in: language)
+            return self
+        }
 
         func translate(_ text: String) async throws -> String {
             try? await Task.sleep(for: .milliseconds(150))
-            if let whole = DemoCaptions.script.first(where: { $0.original == text }) {
-                return whole.translation
-            }
-            // An unfinished clause: return the matching share of its sentence's translation.
-            if let partial = DemoCaptions.script.first(where: { $0.original.hasPrefix(text) }) {
-                let share = Double(text.count) / Double(partial.original.count)
-                return String(partial.translation.prefix(Int(Double(partial.translation.count) * share)))
-            }
-            return "（演示翻译）"
+            return DemoCaptions.translation(of: text, in: speech) ?? "（演示翻译）"
         }
     }
 #endif

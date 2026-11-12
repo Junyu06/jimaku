@@ -28,9 +28,8 @@ final class CaptionWindow: NSObject {
     private let renderer = CaptionFrameRenderer()
     private var controller: AVPictureInPictureController?
     private var possibleObservation: NSKeyValueObservation?
-    private var lines = CaptionLines(original: "", translation: "")
+    private var content = CaptionContent.rows([])
     private var audioLevel: Double?
-    private var style = CaptionStyle()
     private var wantsToFloat = false
 
     /// Sets up the Picture in Picture controller. Safe to call more than once.
@@ -62,15 +61,9 @@ final class CaptionWindow: NSObject {
         }
     }
 
-    func show(_ lines: CaptionLines) {
-        guard lines != self.lines else { return }
-        self.lines = lines
-        render()
-    }
-
-    func show(style: CaptionStyle) {
-        guard style != self.style else { return }
-        self.style = style
+    func show(_ content: CaptionContent) {
+        guard content != self.content else { return }
+        self.content = content
         render()
     }
 
@@ -127,7 +120,7 @@ final class CaptionWindow: NSObject {
     }
 
     private func render() {
-        guard let sampleBuffer = renderer.makeSampleBuffer(for: lines, style: style, audioLevel: audioLevel) else { return }
+        guard let sampleBuffer = renderer.makeSampleBuffer(for: content, audioLevel: audioLevel) else { return }
         let sampleRenderer = displayLayer.sampleBufferRenderer
         if sampleRenderer.status == .failed {
             sampleRenderer.flush()

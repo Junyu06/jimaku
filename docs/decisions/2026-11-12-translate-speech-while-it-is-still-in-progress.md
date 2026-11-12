@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: accepted
+status: superseded in part by 2026-11-12-keep-speech-in-pieces-that-never-change-once-kept.md and 2026-11-12-lay-captions-out-in-fixed-lines-that-roll-up.md. Translating before the recognizer finalizes still stands. Following the latest guess and the ticker rows do not.
 supersedes: the requirement "A line is translated once the recognizer has settled on it" in docs/prd/live-translated-captions.md
 
 # Translate speech while it is still in progress
