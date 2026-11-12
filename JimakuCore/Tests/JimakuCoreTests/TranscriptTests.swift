@@ -201,6 +201,47 @@ struct TranscriptTests {
         #expect(transcript.entries.count == 1)
     }
 
+    @Test("A first guess late on the clock is not taken for a pause")
+    func firstGuessLateOnTheClock() {
+        var transcript = transcript()
+        // The clock is the time since the device started, so it rarely begins near zero.
+        #expect(transcript.apply(.partial("それでいいと思う"), at: 100_000).isEmpty)
+        #expect(transcript.elapse(to: 100_001).isEmpty)
+        #expect(transcript.pending == "それでいいと思う")
+        #expect(transcript.apply(.partial("それでいいと思う"), at: 100_001).map(\.original) == ["それでいいと思う"])
+    }
+
+    @Test("After a guess got shorter, the wait without updates counts from that change")
+    func pauseAfterAShorterGuess() {
+        var transcript = transcript()
+        transcript.apply(.partial("I like reading"), at: 0)
+        transcript.apply(.partial("I like read"), at: 1)
+        #expect(transcript.elapse(to: 3.9).isEmpty)
+        #expect(transcript.elapse(to: 4).map(\.original) == ["I like read"])
+    }
+
+    @Test("A check between two guesses does not use the shorter wait")
+    func checksBetweenGuessesUseTheLongWait() {
+        var transcript = transcript()
+        transcript.apply(.partial("それでいいと思う"), at: 0)
+        // Nine tenths of a second without an update is the usual gap, not a pause.
+        #expect(transcript.elapse(to: 0.9).isEmpty)
+        // The same guess reported again is a pause.
+        #expect(transcript.apply(.partial("それでいいと思う"), at: 1).map(\.original) == ["それでいいと思う"])
+        #expect(transcript.elapse(to: 5).isEmpty)
+        #expect(transcript.entries.count == 1)
+    }
+
+    @Test("Time passing after a reset keeps nothing of the earlier speech")
+    func elapseAfterReset() {
+        var transcript = transcript()
+        transcript.apply(.partial("それでいいと思う"), at: 0)
+        transcript.reset()
+        #expect(transcript.elapse(to: 10).isEmpty)
+        #expect(transcript.entries.isEmpty)
+        #expect(transcript.pending == "")
+    }
+
     @Test("Time passing does not hand a failed entry out again; only an update does")
     func elapseDoesNotRetry() {
         var transcript = transcript()
