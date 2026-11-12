@@ -73,3 +73,13 @@ final class LanguagePackTranslator: Translating {
         }
     }
 #endif
+
+enum AppleIntelligenceError: LocalizedError {
+    case unavailable(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unavailable(let reason): "Apple Intelligence 现在用不了（\(reason)）。可以在设置里换成语言包翻译。"
+        }
+    }
+}

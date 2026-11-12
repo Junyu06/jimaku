@@ -20,9 +20,13 @@ struct CaptionFrameRenderer {
 
     /// - Parameter audioLevel: 0...1, drawn as a thin meter along the bottom so the
     ///   reader can see that audio is arriving. Nil hides the meter.
-    func makeSampleBuffer(for lines: CaptionLines, audioLevel: Double? = nil) -> CMSampleBuffer? {
+    func makeSampleBuffer(
+        for lines: CaptionLines,
+        style: CaptionStyle = CaptionStyle(),
+        audioLevel: Double? = nil
+    ) -> CMSampleBuffer? {
         guard let pixelBuffer = makePixelBuffer() else { return nil }
-        draw(lines.rows, audioLevel: audioLevel, into: pixelBuffer)
+        draw(lines.rows(in: style.mode), scale: style.textSize.scale, audioLevel: audioLevel, into: pixelBuffer)
         return makeSampleBuffer(from: pixelBuffer)
     }
 
@@ -43,7 +47,7 @@ struct CaptionFrameRenderer {
         return pixelBuffer
     }
 
-    private func draw(_ rows: [CaptionRow], audioLevel: Double?, into pixelBuffer: CVPixelBuffer) {
+    private func draw(_ rows: [CaptionRow], scale: Double, audioLevel: Double?, into pixelBuffer: CVPixelBuffer) {
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
 
@@ -76,7 +80,7 @@ struct CaptionFrameRenderer {
             content = rest.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: Self.rowSpacing * 2, right: 0))
         }
         for (row, rect) in zip(rows, rects(for: rows, in: content)) {
-            draw(row, in: rect)
+            draw(row, scale: scale, in: rect)
         }
     }
 
@@ -102,7 +106,7 @@ struct CaptionFrameRenderer {
         return rows.map { $0.role == .secondary ? top : primary }
     }
 
-    private func draw(_ row: CaptionRow, in rect: CGRect) {
+    private func draw(_ row: CaptionRow, scale: Double, in rect: CGRect) {
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
         paragraph.lineBreakMode = .byWordWrapping
@@ -113,8 +117,8 @@ struct CaptionFrameRenderer {
             case .secondary: (60, 30, .regular, UIColor(white: 1, alpha: 0.62))
             }
 
-        // Use the largest font size at which the text fits the row.
-        var fontSize = largest
+        // Start from the user's text size and shrink until the text fits the row.
+        var fontSize = max(largest * scale, smallest)
         var text = NSAttributedString()
         var textHeight: CGFloat = 0
         while true {

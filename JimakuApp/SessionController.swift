@@ -24,13 +24,36 @@ final class SessionController {
         didSet { UserDefaults.standard.set(language.rawValue, forKey: Self.languageKey) }
     }
 
+    /// What translates the captions. Can be changed while a session runs.
+    var engine: TranslationEngine {
+        didSet {
+            UserDefaults.standard.set(engine.rawValue, forKey: Self.engineKey)
+            guard engine != oldValue, session.state == .running else { return }
+            prepareTranslation()
+        }
+    }
+
+    /// How captions look. Changes show in the window at once.
+    var style: CaptionStyle {
+        didSet {
+            UserDefaults.standard.set(style.textSize.rawValue, forKey: Self.textSizeKey)
+            UserDefaults.standard.set(style.mode.rawValue, forKey: Self.modeKey)
+            window.show(style: style)
+            refreshWindow()
+        }
+    }
+
     let window = CaptionWindow()
 
     private static let languageKey = "sourceLanguage"
+    private static let engineKey = "translationEngine"
+    private static let textSizeKey = "captionTextSize"
+    private static let modeKey = "captionMode"
 
     private let audio = AudioMonitor()
     private let recognizer: any SpeechRecognizing
-    private let translator: any Translating
+    private let languagePackTranslator: any Translating
+    private let appleIntelligenceTranslator: any Translating = AppleIntelligenceTranslator()
     private var isRecognizerReady = false
     private var isTranslatorReady = false
     private var backlog = TranslationBacklog()
@@ -42,18 +65,27 @@ final class SessionController {
         language =
             UserDefaults.standard.string(forKey: Self.languageKey).flatMap(SourceLanguage.init(rawValue:))
             ?? .english
+        let defaults = UserDefaults.standard
+        engine = defaults.string(forKey: Self.engineKey).flatMap(TranslationEngine.init(rawValue:)) ?? .languagePack
+        style = CaptionStyle(
+            textSize: defaults.string(forKey: Self.textSizeKey).flatMap(CaptionStyle.TextSize.init(rawValue:))
+                ?? .medium,
+            mode: defaults.string(forKey: Self.modeKey).flatMap(CaptionStyle.Mode.init(rawValue:))
+                ?? .originalAndTranslation
+        )
         #if targetEnvironment(simulator)
             recognizer = ScriptedSpeechRecognizer()
-            translator = ScriptedTranslator()
+            languagePackTranslator = ScriptedTranslator()
         #else
             recognizer = SystemSpeechRecognizer()
-            translator = LanguagePackTranslator()
+            languagePackTranslator = LanguagePackTranslator()
         #endif
     }
 
     func prepare() {
         window.onClosed = { [weak self] in self?.windowDidClose() }
         window.prepare()
+        window.show(style: style)
         // Before a session, the window previews what captions look like.
         window.show(DemoCaptions.lines(at: 0))
         audioStatus = audio.status
@@ -173,17 +205,29 @@ final class SessionController {
     /// original-language captions and tells the user why.
     private func prepareTranslation() {
         isTranslatorReady = false
+        translationTask?.cancel()
+        translationTask = nil
+        backlog.removeAll()
+        notice = nil
         let language = language
+        let engine = engine
         Task { [weak self] in
             guard let self else { return }
             do {
                 try await self.translator.prepare(from: language)
-                guard self.session.state == .running else { return }
+                guard self.session.state == .running, self.engine == engine else { return }
                 self.isTranslatorReady = true
             } catch {
-                guard self.session.state == .running else { return }
+                guard self.session.state == .running, self.engine == engine else { return }
                 self.notice = error.localizedDescription
             }
+        }
+    }
+
+    private var translator: any Translating {
+        switch engine {
+        case .languagePack: languagePackTranslator
+        case .appleIntelligence: appleIntelligenceTranslator
         }
     }
 
@@ -212,9 +256,12 @@ final class SessionController {
     /// Shows the current captions, or one line saying what the session is waiting
     /// for when there are none yet.
     private func refreshWindow() {
+        // Outside a session the window keeps its preview caption.
+        guard session.state == .running else { return }
         let lines = transcript.currentLines
-        if lines.rows.isEmpty {
-            window.show(CaptionLines(original: waitingText, translation: ""))
+        if lines.rows(in: style.mode).isEmpty {
+            // The waiting line goes in the translation slot so it shows in both display modes.
+            window.show(CaptionLines(original: "", translation: waitingText))
         } else {
             window.show(lines)
         }

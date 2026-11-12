@@ -2,66 +2,104 @@ import AVFoundation
 import JimakuCore
 import SwiftUI
 
-/// The only screen so far: a preview of the caption window, the spoken-language
-/// choice, one button that starts or stops a session, and the system control that
-/// starts the screen broadcast.
+/// The app's one screen: a preview of the caption window, the button that starts or
+/// stops a session, the settings, and the captions of the current session.
 struct StartView: View {
     @State private var controller = SessionController()
 
+    private var isRunning: Bool { controller.session.state == .running }
 
     var body: some View {
-        VStack(spacing: 28) {
-            CaptionPreview(layer: controller.window.displayLayer)
-                .aspectRatio(CaptionFrameRenderer.frameSize, contentMode: .fit)
-                .frame(maxWidth: 520)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        Form {
+            Section {
+                CaptionPreview(layer: controller.window.displayLayer)
+                    .aspectRatio(CaptionFrameRenderer.frameSize, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
 
-            Picker("说话的语言", selection: $controller.language) {
-                ForEach(SourceLanguage.allCases, id: \.self) { language in
-                    Text(name(of: language)).tag(language)
+                Button {
+                    controller.performPrimaryAction()
+                } label: {
+                    Text(primaryActionTitle)
+                        .font(.title3.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .accessibilityIdentifier("primaryAction")
+
+                if isRunning, let hint = audioHint {
+                    HStack(spacing: 12) {
+                        Text(hint)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("audioHint")
+                        Spacer(minLength: 0)
+                        if controller.audioStatus == .notBroadcasting {
+                            BroadcastPicker()
+                                .frame(width: 44, height: 44)
+                                .accessibilityIdentifier("broadcastPicker")
+                        }
+                    }
+                }
+
+                if let notice = controller.notice {
+                    Text(notice)
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("notice")
                 }
             }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 280)
-            .disabled(controller.session.state == .running)
-            .accessibilityIdentifier("language")
 
-            Button {
-                controller.performPrimaryAction()
-            } label: {
-                Text(primaryActionTitle)
-                    .font(.title2.weight(.semibold))
-                    .frame(maxWidth: 280)
-                    .padding(.vertical, 10)
+            Section("设置") {
+                Picker("说话的语言", selection: $controller.language) {
+                    Text("英语").tag(SourceLanguage.english)
+                    Text("日语").tag(SourceLanguage.japanese)
+                }
+                .disabled(isRunning)
+                .accessibilityIdentifier("language")
+
+                Picker("翻译", selection: $controller.engine) {
+                    Text("语言包").tag(TranslationEngine.languagePack)
+                    Text("Apple Intelligence").tag(TranslationEngine.appleIntelligence)
+                }
+                .accessibilityIdentifier("engine")
+
+                Picker("显示", selection: $controller.style.mode) {
+                    Text("原文和中文").tag(CaptionStyle.Mode.originalAndTranslation)
+                    Text("只显示中文").tag(CaptionStyle.Mode.translationOnly)
+                }
+                .accessibilityIdentifier("mode")
+
+                LabeledContent("字号") {
+                    Picker("字号", selection: $controller.style.textSize) {
+                        Text("小").tag(CaptionStyle.TextSize.small)
+                        Text("中").tag(CaptionStyle.TextSize.medium)
+                        Text("大").tag(CaptionStyle.TextSize.large)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
+                    .accessibilityIdentifier("textSize")
+                }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .accessibilityIdentifier("primaryAction")
 
-            if controller.session.state == .running, let hint = audioHint {
-                VStack(spacing: 10) {
-                    Text(hint)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .accessibilityIdentifier("audioHint")
-                    if controller.audioStatus == .notBroadcasting {
-                        BroadcastPicker()
-                            .frame(width: 44, height: 44)
-                            .accessibilityIdentifier("broadcastPicker")
+            if !controller.transcript.entries.isEmpty {
+                Section("这一次的字幕") {
+                    ForEach(controller.transcript.entries) { entry in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.original)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                            if let translation = entry.translation {
+                                Text(translation)
+                            }
+                        }
+                        .textSelection(.enabled)
                     }
                 }
             }
-
-            if let notice = controller.notice {
-                Text(notice)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .accessibilityIdentifier("notice")
-            }
         }
-        .padding()
         .onAppear { controller.prepare() }
     }
 
@@ -69,16 +107,9 @@ struct StartView: View {
     private var audioHint: String? {
         switch controller.audioStatus {
         case .unavailable: "读不到共享的音频缓冲，收不到别的 app 的声音。"
-        case .notBroadcasting: "还没开始录屏。点下面的圆钮，选 Jimaku，开始直播。"
+        case .notBroadcasting: "还没开始录屏。点右边的圆钮，选 Jimaku，开始直播。"
         case .stalled: "录屏已开始，暂时没有声音。"
         case .receiving: nil
-        }
-    }
-
-    private func name(of language: SourceLanguage) -> String {
-        switch language {
-        case .english: "英语"
-        case .japanese: "日语"
         }
     }
 

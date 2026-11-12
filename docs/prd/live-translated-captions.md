@@ -1,6 +1,6 @@
 # Live translated captions
 
-Accepted requirements for the first version. Nothing here is implemented yet unless the Status line of a section says so.
+Accepted requirements for the first version. The Status section at the end says what is implemented and what has been verified.
 
 ## What the user does
 
@@ -41,8 +41,7 @@ Running reliably for a full hour is not part of this acceptance.
 
 ## Status
 
-- Floating caption window: implemented with scripted demo captions. Seen in an iPad simulator; not verified on a device.
-- Audio capture: implemented, shown as a level meter in the floating window. The extension has not run anywhere; the path from the shared ring to the meter was exercised in the simulator with synthetic audio.
-- Speech recognition and the spoken-language choice: implemented against the system speech model. Never run; in the simulator scripted text stands in for it.
-- Translation with the system language packs: implemented. Never run; in the simulator scripted text stands in for it.
-- Engine switch, Apple Intelligence translation, text size, one-line mode, session log: not implemented.
+All requirements are implemented. None is verified on a device. Each case under `docs/cases/` records what was checked.
+
+- Floating caption window, text size, display mode, session log, Apple Intelligence translation: seen working in an iPad simulator.
+- Audio capture, system speech recognition, language-pack translation, ending the broadcast from the window: never run. The simulator cannot run them; scripted input stands in for them there.
