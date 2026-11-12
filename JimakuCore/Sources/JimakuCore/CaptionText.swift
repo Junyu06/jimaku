@@ -30,13 +30,16 @@ public enum CaptionText {
         }
         var kept = text[start...]
 
-        // If the cut landed inside a word and there are later words, drop the fragment.
-        let cutInsideWord =
-            start > text.startIndex
-            && !text[text.index(before: start)].isWhitespace
-            && !(kept.first?.isWhitespace ?? true)
-        if cutInsideWord, let space = kept.firstIndex(where: \.isWhitespace) {
-            kept = kept[space...]
+        // If the cut landed inside a word, drop the fragment. Only narrow characters
+        // form words that way; Chinese and Japanese text can be cut anywhere.
+        if start > text.startIndex, let first = kept.first,
+            isWordCharacter(text[text.index(before: start)]), isWordCharacter(first)
+        {
+            let fragmentEnd = kept.firstIndex(where: { !isWordCharacter($0) }) ?? kept.endIndex
+            // Keep the fragment when it is all there is.
+            if fragmentEnd < kept.endIndex {
+                kept = kept[fragmentEnd...]
+            }
         }
         return "…" + String(kept).trimmed
     }
@@ -89,6 +92,10 @@ public enum CaptionText {
             if beforeLetter.isWhitespace || beforeLetter == "." { return false }
         }
         return true
+    }
+
+    private static func isWordCharacter(_ character: Character) -> Bool {
+        width(of: character) == 1 && (character.isLetter || character.isNumber)
     }
 
     private static func width(of character: Character) -> Int {

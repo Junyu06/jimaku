@@ -317,7 +317,10 @@ struct TranscriptLongStretchTests {
         transcript.apply(.partial("This is a demo caption. The window should stay on top. これはテスト用の"))
         #expect(transcript.entries.map(\.original) == ["This is a demo caption.", "The window should stay on top."])
         #expect(transcript.pending == "これはテスト用の")
-        #expect(transcript.currentLines.original == "This is a demo caption. The window should stay on top.これはテスト用の")
+        // Earlier sentences stay on the row, cut at the front to fit it.
+        let shown = transcript.currentLines.original
+        #expect(shown.hasSuffix("The window should stay on top.これはテスト用の"))
+        #expect(CaptionText.width(of: shown) <= Transcript.originalRowWidth)
     }
 }
 

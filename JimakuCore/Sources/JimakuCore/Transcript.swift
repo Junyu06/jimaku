@@ -31,10 +31,10 @@ public struct Transcript: Equatable, Sendable {
     }
 
     /// Columns available on the original row before its beginning is cut.
-    public static let originalRowWidth = 84
+    public static let originalRowWidth = 64
 
     /// Columns available on the translation row before its beginning is cut.
-    public static let translationRowWidth = 64
+    public static let translationRowWidth = 48
 
     /// How many settled sentences can appear on a row before the speech in progress.
     private static let recentEntryCount = 6
