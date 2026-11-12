@@ -277,10 +277,11 @@ final class SessionController {
                 self.refreshWindow()
                 for try await update in updates {
                     guard self.sessionGeneration.isCurrent(token) else { return }
-                    if let settled = self.transcript.apply(update) {
+                    for settled in self.transcript.apply(update) {
                         self.pipeline.settle(settled)
-                        self.pump()
                     }
+                    self.pipeline.offerPending(self.transcript.pending)
+                    self.pump()
                     self.refreshWindow()
                 }
                 // The recognizer stopped on its own while the session is still running.
@@ -335,27 +336,38 @@ final class SessionController {
         }
     }
 
-    /// Sends the next waiting sentence to the translator, if the pipeline allows it.
+    /// Sends the next thing to translate, if the pipeline has one: a settled sentence,
+    /// or else the speech still in progress.
     private func pump() {
-        guard let translator, let token = translatorToken, let entry = pipeline.takeNext() else { return }
+        guard let translator, let token = translatorToken, let job = pipeline.takeNext() else { return }
+        let source =
+            switch job {
+            case .entry(let entry): entry.original
+            case .pending(let text): text
+            }
         Task { [weak self] in
             let result: Result<String, Error>
             do {
-                result = .success(try await translator.translate(entry.original))
+                result = .success(try await translator.translate(source))
             } catch {
                 result = .failure(error)
             }
             // The engine changed or the session ended while this was being translated.
             guard let self, self.translatorGeneration.isCurrent(token) else { return }
             self.pipeline.finishCurrent()
-            switch result {
-            case .success(let translation):
+            switch (job, result) {
+            case (.entry(let entry), .success(let translation)):
                 self.translationNotice = nil
                 self.transcript.setTranslation(translation, for: entry.id)
-                self.refreshWindow()
-            case .failure(let error):
+            case (.pending(let text), .success(let translation)):
+                self.transcript.setPendingTranslation(translation, of: text)
+            case (.entry, .failure(let error)):
                 self.translationNotice = "翻译出错：\(error.localizedDescription)"
+            case (.pending, .failure):
+                // A provisional translation that failed is simply not shown.
+                break
             }
+            self.refreshWindow()
             self.pump()
         }
     }

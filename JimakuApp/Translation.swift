@@ -76,8 +76,16 @@ private final class LanguagePackTranslator: PreparedTranslator {
         func prepare(from language: SourceLanguage) async throws -> any PreparedTranslator { self }
 
         func translate(_ text: String) async throws -> String {
-            try? await Task.sleep(for: .milliseconds(400))
-            return DemoCaptions.script.first { $0.original == text }?.translation ?? "（演示翻译）"
+            try? await Task.sleep(for: .milliseconds(150))
+            if let whole = DemoCaptions.script.first(where: { $0.original == text }) {
+                return whole.translation
+            }
+            // An unfinished clause: return the matching share of its sentence's translation.
+            if let partial = DemoCaptions.script.first(where: { $0.original.hasPrefix(text) }) {
+                let share = Double(text.count) / Double(partial.original.count)
+                return String(partial.translation.prefix(Int(Double(partial.translation.count) * share)))
+            }
+            return "（演示翻译）"
         }
     }
 #endif

@@ -306,3 +306,30 @@ struct SourceLanguageTests {
         #expect(SourceLanguage(rawValue: "klingon") == nil)
     }
 }
+
+@Suite("Transcript on a long stretch")
+struct TranscriptLongStretchTests {
+    @Test("A growing stretch of mixed English and Japanese keeps earlier sentences on the row")
+    func mixedStretchRunsOn() {
+        var transcript = Transcript()
+        transcript.apply(.partial("This is a demo caption. "))
+        transcript.apply(.partial("This is a demo caption. The window should stay on top. "))
+        transcript.apply(.partial("This is a demo caption. The window should stay on top. これはテスト用の"))
+        #expect(transcript.entries.map(\.original) == ["This is a demo caption.", "The window should stay on top."])
+        #expect(transcript.pending == "これはテスト用の")
+        #expect(transcript.currentLines.original == "This is a demo caption. The window should stay on top.これはテスト用の")
+    }
+}
+
+@Suite("CaptionText in mixed scripts")
+struct CaptionTextMixedScriptTests {
+    @Test("A space inside Chinese text does not cost the text before it")
+    func spaceInsideChinese() {
+        #expect(CaptionText.tail(of: "这是一条演示字幕。切到别的 app，继续看。", width: 30) == "…字幕。切到别的 app，继续看。")
+    }
+
+    @Test("A cut inside an English word within Chinese text still drops the word fragment")
+    func englishWordInsideChinese() {
+        #expect(CaptionText.tail(of: "打开 application 然后看", width: 16) == "…然后看")
+    }
+}

@@ -129,22 +129,24 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
             let sentences = DemoCaptions.script.map(\.original)
             let (updates, continuation) = AsyncThrowingStream<RecognitionUpdate, Error>.makeStream()
             task = Task {
-                var index = 0
+                // Like fast continuous speech on a device: one long stretch that keeps
+                // growing, finalized only after the whole script has been spoken.
                 while !Task.isCancelled {
-                    let sentence = sentences[index % sentences.count]
-                    let pieces =
-                        sentence.contains(" ")
-                        ? sentence.split(separator: " ").map { String($0) + " " }
-                        : sentence.map(String.init)
                     var spoken = ""
-                    for piece in pieces {
-                        spoken += piece
-                        continuation.yield(.partial(spoken))
-                        try? await Task.sleep(for: .milliseconds(220))
+                    for sentence in sentences {
+                        let pieces =
+                            sentence.contains(" ")
+                            ? sentence.split(separator: " ").map { String($0) + " " }
+                            : sentence.map(String.init)
+                        for piece in pieces {
+                            spoken += piece
+                            continuation.yield(.partial(spoken))
+                            try? await Task.sleep(for: .milliseconds(220))
+                        }
+                        if !spoken.hasSuffix(" ") { spoken += " " }
                     }
-                    continuation.yield(.final(sentence))
+                    continuation.yield(.final(spoken))
                     try? await Task.sleep(for: .milliseconds(900))
-                    index += 1
                 }
                 continuation.finish()
             }
