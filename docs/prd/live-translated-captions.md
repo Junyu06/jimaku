@@ -44,4 +44,5 @@ Running reliably for a full hour is not part of this acceptance.
 - Floating caption window: implemented with scripted demo captions. Seen in an iPad simulator; not verified on a device.
 - Audio capture: implemented, shown as a level meter in the floating window. The extension has not run anywhere; the path from the shared ring to the meter was exercised in the simulator with synthetic audio.
 - Speech recognition and the spoken-language choice: implemented against the system speech model. Never run; in the simulator scripted text stands in for it.
-- Translation, engine switch, text size, one-line mode, session log: not implemented.
+- Translation with the system language packs: implemented. Never run; in the simulator scripted text stands in for it.
+- Engine switch, Apple Intelligence translation, text size, one-line mode, session log: not implemented.

@@ -3,9 +3,8 @@ import JimakuCore
 import Observation
 
 /// Runs a caption session: floats the window, reads the audio the broadcast
-/// extension captured, sends it to speech recognition, and shows the text.
-///
-/// Translation is not connected yet, so captions are in the spoken language.
+/// extension captured, sends it to speech recognition, translates what was said,
+/// and shows both.
 @MainActor
 @Observable
 final class SessionController {
@@ -31,9 +30,13 @@ final class SessionController {
 
     private let audio = AudioMonitor()
     private let recognizer: any SpeechRecognizing
+    private let translator: any Translating
     private var isRecognizerReady = false
+    private var isTranslatorReady = false
+    private var backlog = TranslationBacklog()
     private var audioTask: Task<Void, Never>?
     private var recognitionTask: Task<Void, Never>?
+    private var translationTask: Task<Void, Never>?
 
     init() {
         language =
@@ -41,8 +44,10 @@ final class SessionController {
             ?? .english
         #if targetEnvironment(simulator)
             recognizer = ScriptedSpeechRecognizer()
+            translator = ScriptedTranslator()
         #else
             recognizer = SystemSpeechRecognizer()
+            translator = LanguagePackTranslator()
         #endif
     }
 
@@ -73,6 +78,7 @@ final class SessionController {
         window.float()
         startAudio()
         startRecognition()
+        prepareTranslation()
     }
 
     private func stop() {
@@ -92,7 +98,11 @@ final class SessionController {
         audioTask = nil
         recognitionTask?.cancel()
         recognitionTask = nil
+        translationTask?.cancel()
+        translationTask = nil
+        backlog.removeAll()
         isRecognizerReady = false
+        isTranslatorReady = false
         let recognizer = recognizer
         Task { await recognizer.stop() }
         audio.requestBroadcastStop()
@@ -145,7 +155,9 @@ final class SessionController {
                 self.isRecognizerReady = true
                 self.refreshWindow()
                 for try await update in updates {
-                    self.transcript.apply(update)
+                    if let settled = self.transcript.apply(update) {
+                        self.translate(settled)
+                    }
                     self.refreshWindow()
                 }
             } catch {
@@ -154,6 +166,46 @@ final class SessionController {
                 self.notice = "语音识别出错：\(error.localizedDescription)"
                 self.refreshWindow()
             }
+        }
+    }
+
+    /// Checks that translation can run. If it cannot, the session carries on with
+    /// original-language captions and tells the user why.
+    private func prepareTranslation() {
+        isTranslatorReady = false
+        let language = language
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.translator.prepare(from: language)
+                guard self.session.state == .running else { return }
+                self.isTranslatorReady = true
+            } catch {
+                guard self.session.state == .running else { return }
+                self.notice = error.localizedDescription
+            }
+        }
+    }
+
+    /// Queues settled speech for translation. One sentence is translated at a time,
+    /// in order; if they pile up, the oldest are skipped.
+    private func translate(_ entry: Transcript.Entry) {
+        guard isTranslatorReady else { return }
+        backlog.add(entry)
+        guard translationTask == nil else { return }
+        translationTask = Task { [weak self] in
+            while let self, !Task.isCancelled, let next = self.backlog.next() {
+                do {
+                    let translation = try await self.translator.translate(next.original)
+                    guard !Task.isCancelled else { return }
+                    self.transcript.setTranslation(translation, for: next.id)
+                    self.refreshWindow()
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    self.notice = "翻译出错：\(error.localizedDescription)"
+                }
+            }
+            self?.translationTask = nil
         }
     }
 

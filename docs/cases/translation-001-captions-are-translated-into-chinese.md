@@ -1,0 +1,17 @@
+---
+area: translation
+status: not-run
+---
+
+# Captions are translated into Chinese
+
+- Input: on an iPhone and an iPad with the English, Japanese, and Simplified Chinese translation languages downloaded: start a session, then watch an English video and a Japanese video in a video app and one video in a social feed app, two to three minutes each.
+- Expected result: the floating window shows the original line on top and a Simplified Chinese line below. The Chinese line appears once a sentence has settled, stays while the next sentence is spoken, and can be followed by a reader. Without the language pack downloaded, the app says which languages to download and keeps showing original-language captions.
+- Property: settled speech is translated on the device with the system language packs while the app is in the background.
+
+## Evidence
+
+- Physical iPad: not run.
+- Physical iPhone: not run.
+- 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0, with scripted text standing in for both the recognizer and the translator (the simulator has neither): the original row grew word by word, and the Chinese row changed after each sentence settled and stayed during the next one. This exercises the transcript, the backlog, and the window, not translation.
+- 2026-11-12: the app including `LanguagePackTranslator` compiles for `generic/platform=iOS`. It has never run.
