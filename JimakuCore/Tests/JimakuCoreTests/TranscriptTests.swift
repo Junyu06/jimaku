@@ -1,293 +1,364 @@
 import JimakuCore
 import Testing
 
-@Suite("Sentence splitting")
-struct SentenceSplittingTests {
-    @Test("Text without an ending is all remainder")
-    func noEnding() {
-        let split = CaptionText.sentences(in: "How are you")
-        #expect(split.complete.isEmpty)
-        #expect(split.remainder == "How are you")
-    }
-
-    @Test("A finished sentence is split from what follows")
-    func latin() {
-        let split = CaptionText.sentences(in: "Hello world. How are")
-        #expect(split.complete == ["Hello world."])
-        #expect(split.remainder == "How are")
-    }
-
-    @Test("Japanese and Chinese endings split without spaces")
-    func cjk() {
-        let split = CaptionText.sentences(in: "こんにちは。元気ですか？はい")
-        #expect(split.complete == ["こんにちは。", "元気ですか？"])
-        #expect(split.remainder == "はい")
-    }
-
-    @Test("Text that ends with an ending has no remainder")
-    func endsComplete() {
-        let split = CaptionText.sentences(in: "Hello world.")
-        #expect(split.complete == ["Hello world."])
-        #expect(split.remainder.isEmpty)
-    }
-
-    @Test("A period inside a number or an initialism does not end a sentence")
-    func periodsThatAreNotEndings() {
-        #expect(CaptionText.sentences(in: "It costs 3.5 dollars").complete.isEmpty)
-        #expect(CaptionText.sentences(in: "The U.S. team won").complete.isEmpty)
-    }
-
-    @Test("Several ending marks in a row end one sentence")
-    func repeatedEndings() {
-        let split = CaptionText.sentences(in: "Really?! Yes.")
-        #expect(split.complete == ["Really?!", "Yes."])
-    }
-
-    @Test("A closing quote stays with its sentence")
-    func closingQuote() {
-        let split = CaptionText.sentences(in: "「行こう。」と言った")
-        #expect(split.complete == ["「行こう。」"])
-        #expect(split.remainder == "と言った")
-    }
-
-    @Test("Empty text has nothing")
-    func empty() {
-        let split = CaptionText.sentences(in: "  ")
-        #expect(split.complete.isEmpty)
-        #expect(split.remainder.isEmpty)
-    }
-}
-
 @Suite("Transcript")
 struct TranscriptTests {
-    @Test("A new transcript has nothing to show")
-    func newIsEmpty() {
-        let transcript = Transcript()
+    private let rules = ChunkRules(clauseMinimum: 12, limit: 36)
+
+    private func transcript() -> Transcript { Transcript(rules: rules) }
+
+    @Test("A new transcript has nothing")
+    func startsEmpty() {
+        let transcript = transcript()
         #expect(transcript.entries.isEmpty)
-        #expect(transcript.pending.isEmpty)
-        #expect(transcript.currentLines.rows.isEmpty)
+        #expect(transcript.pending == "")
+        #expect(transcript.pendingTranslation == nil)
     }
 
-    @Test("An unfinished partial is shown but not kept")
-    func partialIsPending() {
-        var transcript = Transcript()
-        let settled = transcript.apply(.partial("Hello wor"))
+    @Test("A first guess is speech in progress, not kept yet")
+    func firstGuess() {
+        var transcript = transcript()
+        let settled = transcript.apply(.partial("はい、そうです。"), at: 0)
         #expect(settled.isEmpty)
         #expect(transcript.entries.isEmpty)
-        #expect(transcript.pending == "Hello wor")
-        #expect(transcript.currentLines.original == "Hello wor")
+        #expect(transcript.pending == "はい、そうです。")
     }
 
-    @Test("A sentence that finishes inside a partial settles at once, without waiting for the recognizer")
-    func sentenceSettlesInsidePartial() {
-        var transcript = Transcript()
-        let settled = transcript.apply(.partial("Hello world. How are"))
-        #expect(settled == [Transcript.Entry(id: 0, original: "Hello world.", translation: nil)])
-        #expect(transcript.pending == "How are")
+    @Test("A sentence is kept once it has stood unchanged for a moment")
+    func stableSentenceIsKept() {
+        var transcript = transcript()
+        transcript.apply(.partial("はい、そうです。"), at: 0)
+        let settled = transcript.apply(.partial("はい、そうです。それで"), at: 1)
+        #expect(settled.map(\.original) == ["はい、そうです。"])
+        #expect(transcript.entries.map(\.original) == ["はい、そうです。"])
+        #expect(transcript.pending == "それで")
     }
 
-    @Test("A sentence settled from a partial is not settled again as the partial grows")
-    func noDuplicateSettling() {
-        var transcript = Transcript()
-        transcript.apply(.partial("One. Two"))
-        let settled = transcript.apply(.partial("One. Two. Three"))
-        #expect(settled.map(\.original) == ["Two."])
-        #expect(transcript.entries.map(\.original) == ["One.", "Two."])
-        #expect(transcript.pending == "Three")
+    @Test("A sentence is not kept before it has stood long enough")
+    func tooSoon() {
+        var transcript = transcript()
+        transcript.apply(.partial("はい、そうです。"), at: 0)
+        let settled = transcript.apply(.partial("はい、そうです。それで"), at: 0.3)
+        #expect(settled.isEmpty)
+        #expect(transcript.pending == "はい、そうです。それで")
     }
 
-    @Test("The final result settles only what the partials had not")
-    func finalSettlesTheRest() {
-        var transcript = Transcript()
-        transcript.apply(.partial("One. Two"))
-        let settled = transcript.apply(.final("One. Two is here"))
-        #expect(settled.map(\.original) == ["Two is here"])
-        #expect(transcript.entries.map(\.original) == ["One.", "Two is here"])
-        #expect(transcript.pending.isEmpty)
+    @Test("A kept sentence does not change when the recognizer drops its period later")
+    func keptSentenceIsFrozen() {
+        var transcript = transcript()
+        transcript.apply(.partial("ゆっくり説明してください。"), at: 0)
+        transcript.apply(.partial("ゆっくり説明してください。先生"), at: 1)
+        // The period goes away, as it does on a device, and comes back later.
+        transcript.apply(.partial("ゆっくり説明してください先生サンドイッチ"), at: 2)
+        #expect(transcript.entries.map(\.original) == ["ゆっくり説明してください。"])
+        #expect(transcript.pending == "先生サンドイッチ")
+        transcript.apply(.partial("ゆっくり説明してください。先生サンドイッチを"), at: 2.1)
+        #expect(transcript.entries.map(\.original) == ["ゆっくり説明してください。"])
+        #expect(transcript.pending == "先生サンドイッチを")
     }
 
-    @Test("A final result with no partial before it settles every sentence in it")
+    @Test("A rewrite restarts the wait for the rewritten part")
+    func rewriteRestartsTheWait() {
+        var transcript = transcript()
+        transcript.apply(.partial("こちちらにります。"), at: 0)
+        // The recognizer corrects itself a second later: this text is new.
+        let afterFix = transcript.apply(.partial("こちらになります。状態"), at: 1)
+        #expect(afterFix.isEmpty)
+        let later = transcript.apply(.partial("こちらになります。状態を確認"), at: 2)
+        #expect(later.map(\.original) == ["こちらになります。"])
+    }
+
+    @Test("The final result keeps everything that was not kept yet")
+    func finalKeepsTheRest() {
+        var transcript = transcript()
+        transcript.apply(.partial("はい、そうです。"), at: 0)
+        transcript.apply(.partial("はい、そうです。それで"), at: 1)
+        let settled = transcript.apply(.final("はい、そうです。それでいいです。"), at: 1.2)
+        #expect(settled.map(\.original) == ["それでいいです。"])
+        #expect(transcript.entries.map(\.original) == ["はい、そうです。", "それでいいです。"])
+        #expect(transcript.pending == "")
+    }
+
+    @Test("A final result with no guess before it is kept sentence by sentence")
     func finalAlone() {
-        var transcript = Transcript()
-        let settled = transcript.apply(.final(" Hello world. Bye. "))
-        #expect(settled.map(\.original) == ["Hello world.", "Bye."])
+        var transcript = transcript()
+        let settled = transcript.apply(.final("Hello there. How are you"), at: 0)
+        #expect(settled.map(\.original) == ["Hello there.", "How are you"])
         #expect(settled.map(\.id) == [0, 1])
     }
 
-    @Test("After a final result, the next speech starts a fresh count")
-    func nextUtteranceStartsFresh() {
-        var transcript = Transcript()
-        transcript.apply(.partial("One. Two"))
-        transcript.apply(.final("One. Two."))
-        let settled = transcript.apply(.partial("Three. Four"))
-        #expect(settled.map(\.original) == ["Three."])
-        #expect(transcript.entries.map(\.original) == ["One.", "Two.", "Three."])
+    @Test("A final result that punctuates differently repeats nothing")
+    func finalWithOtherPunctuation() {
+        var transcript = transcript()
+        transcript.apply(.partial("so I walked into the store yesterday. and the guy"), at: 0)
+        transcript.apply(.partial("so I walked into the store yesterday. and the guy behind"), at: 1)
+        #expect(transcript.entries.map(\.original) == ["so I walked into the store yesterday."])
+        transcript.apply(.final("So I walked into the store yesterday, and the guy behind the counter."), at: 2)
+        #expect(
+            transcript.entries.map(\.original) == [
+                "so I walked into the store yesterday.", "and the guy behind the counter.",
+            ])
     }
 
-    @Test("An empty final result clears the partial and adds nothing")
+    @Test("After a final result the next speech starts from nothing")
+    func nextStretch() {
+        var transcript = transcript()
+        transcript.apply(.final("Hello there."), at: 0)
+        transcript.apply(.partial("How are"), at: 1)
+        #expect(transcript.pending == "How are")
+        let settled = transcript.apply(.final("How are you."), at: 2)
+        #expect(settled.map(\.original) == ["How are you."])
+        #expect(settled.map(\.id) == [1])
+    }
+
+    @Test("An empty final result clears the speech in progress and keeps nothing")
     func emptyFinal() {
-        var transcript = Transcript()
-        transcript.apply(.partial("uh"))
-        #expect(transcript.apply(.final("  ")).isEmpty)
+        var transcript = transcript()
+        transcript.apply(.partial("uh"), at: 0)
+        let settled = transcript.apply(.final(""), at: 1)
+        #expect(settled.isEmpty)
         #expect(transcript.entries.isEmpty)
-        #expect(transcript.pending.isEmpty)
+        #expect(transcript.pending == "")
     }
 
-    @Test("The original row runs on from settled sentences into the speech in progress")
-    func originalRowRunsOn() {
-        var transcript = Transcript()
-        transcript.apply(.partial("One. Two is"))
-        #expect(transcript.currentLines.original == "One. Two is")
+    @Test("Long speech without any mark is kept in pieces while it goes on")
+    func longSpeechIsKeptInPieces() {
+        var transcript = transcript()
+        let text = "今日行くの行かないのゆっくり説明してくださいと言われたので"
+        transcript.apply(.partial(text), at: 0)
+        let settled = transcript.apply(.partial(text + "先生"), at: 1)
+        #expect(settled.map(\.original) == ["今日行くの行かないのゆっくり"])
+        #expect(transcript.pending == "説明してくださいと言われたので先生")
     }
 
-    @Test("Japanese sentences run on without added spaces")
-    func originalRowRunsOnWithoutSpaces() {
-        var transcript = Transcript()
-        transcript.apply(.partial("そうです。はい"))
-        #expect(transcript.currentLines.original == "そうです。はい")
+    @Test("A guess that shrinks below what was kept leaves nothing in progress")
+    func shrinkingGuess() {
+        var transcript = transcript()
+        transcript.apply(.partial("はい、そうです。"), at: 0)
+        transcript.apply(.partial("はい、そうです。それ"), at: 1)
+        transcript.apply(.partial("はい、そう"), at: 2)
+        #expect(transcript.entries.map(\.original) == ["はい、そうです。"])
+        #expect(transcript.pending == "")
     }
 
-    @Test("Translations run on in order, newest last")
-    func translationsRunOn() {
-        var transcript = Transcript()
-        transcript.apply(.final("One. Two."))
-        transcript.setTranslation("二。", for: 1)
-        transcript.setTranslation("一。", for: 0)
-        #expect(transcript.currentLines.translation == "一。二。")
-    }
+    // MARK: Translations
 
-    @Test("A sentence not translated yet is skipped rather than holding the others back")
-    func untranslatedSentenceIsSkipped() {
-        var transcript = Transcript()
-        transcript.apply(.final("One. Two."))
-        transcript.setTranslation("二。", for: 1)
-        #expect(transcript.currentLines.translation == "二。")
-    }
-
-    @Test("The speech in progress shows its provisional translation after the settled ones")
-    func provisionalTranslationFollows() {
-        var transcript = Transcript()
-        transcript.apply(.partial("One. Two is"))
-        transcript.setTranslation("一。", for: 0)
-        transcript.setPendingTranslation("二是", of: "Two is")
-        #expect(transcript.pendingTranslation == "二是")
-        #expect(transcript.currentLines.translation == "一。二是")
-    }
-
-    @Test("A provisional translation of an earlier version of the same clause is still shown")
-    func provisionalOfEarlierVersion() {
-        var transcript = Transcript()
-        transcript.apply(.partial("Two is"))
-        transcript.apply(.partial("Two is here"))
-        transcript.setPendingTranslation("二是", of: "Two is")
-        #expect(transcript.pendingTranslation == "二是")
-    }
-
-    @Test("A provisional translation of a clause that is gone is dropped")
-    func staleProvisionalIsDropped() {
-        var transcript = Transcript()
-        transcript.apply(.partial("Two is"))
-        transcript.apply(.partial("Two is here. Three"))
-        transcript.setPendingTranslation("二是", of: "Two is")
-        #expect(transcript.pendingTranslation == nil)
-    }
-
-    @Test("Settling a clause removes its provisional translation")
-    func settlingClearsProvisional() {
-        var transcript = Transcript()
-        transcript.apply(.partial("Two is"))
-        transcript.setPendingTranslation("二是", of: "Two is")
-        transcript.apply(.partial("Two is here. Three"))
-        #expect(transcript.pendingTranslation == nil)
-        transcript.apply(.partial("Three is"))
-        transcript.setPendingTranslation("三是", of: "Three is")
-        transcript.apply(.final("Two is here. Three is done."))
-        #expect(transcript.pendingTranslation == nil)
-    }
-
-    @Test("Both rows show only their end when there is too much text")
-    func rowsShowTheEnd() {
-        var transcript = Transcript()
-        let sentences = (1...30).map { "Sentence number \($0)." }
-        transcript.apply(.final(sentences.joined(separator: " ")))
-        for entry in transcript.entries {
-            transcript.setTranslation("第\(entry.id + 1)句的翻译。", for: entry.id)
-        }
-        let lines = transcript.currentLines
-        #expect(lines.original.hasPrefix("…"))
-        #expect(lines.original.hasSuffix("Sentence number 30."))
-        #expect(CaptionText.width(of: lines.original) <= Transcript.originalRowWidth)
-        #expect(lines.translation.hasPrefix("…"))
-        #expect(lines.translation.hasSuffix("第30句的翻译。"))
-        #expect(CaptionText.width(of: lines.translation) <= Transcript.translationRowWidth)
+    @Test("A translation goes to its entry")
+    func translation() {
+        var transcript = transcript()
+        transcript.apply(.final("Hello there. How are you"), at: 0)
+        transcript.setTranslation(" 你好。 ", for: 0)
+        #expect(transcript.entries.map(\.translation) == ["你好。", nil])
     }
 
     @Test("A translation for an unknown entry, or a blank one, is ignored")
-    func badTranslationsIgnored() {
-        var transcript = Transcript()
-        transcript.apply(.final("One."))
-        transcript.setTranslation("？", for: 7)
+    func strayTranslation() {
+        var transcript = transcript()
+        transcript.apply(.final("Hello there."), at: 0)
+        transcript.setTranslation("你好", for: 7)
         transcript.setTranslation("  ", for: 0)
-        #expect(transcript.entries[0].translation == nil)
-        #expect(transcript.currentLines.translation.isEmpty)
+        #expect(transcript.entries.map(\.translation) == [nil])
+    }
+
+    @Test("After a failed translation the entry is handed out again with the next update")
+    func failedTranslationIsRetried() {
+        var transcript = transcript()
+        let first = transcript.apply(.final("Hello there."), at: 0)
+        transcript.translationFailed(for: first[0].id)
+        let again = transcript.apply(.partial("How"), at: 1)
+        #expect(again.map(\.id) == [0])
+        // Only once per failure.
+        #expect(transcript.apply(.partial("How are"), at: 1.1).isEmpty)
+    }
+
+    @Test("An entry that was translated meanwhile is not handed out again")
+    func noRetryAfterSuccess() {
+        var transcript = transcript()
+        transcript.apply(.final("Hello there."), at: 0)
+        transcript.translationFailed(for: 0)
+        transcript.setTranslation("你好。", for: 0)
+        #expect(transcript.apply(.partial("How"), at: 1).isEmpty)
+    }
+
+    @Test("An old entry is not retried")
+    func oldEntriesAreNotRetried() {
+        var transcript = transcript()
+        transcript.apply(.final("One. Two. Three. Four. Five."), at: 0)
+        transcript.translationFailed(for: 0)
+        #expect(transcript.apply(.partial("Six"), at: 1).isEmpty)
+    }
+
+    // MARK: The provisional translation of the speech in progress
+
+    @Test("A provisional translation is shown for the speech it was made for")
+    func provisional() {
+        var transcript = transcript()
+        transcript.apply(.partial("それでいい"), at: 0)
+        let mark = transcript.pendingMark
+        transcript.setPendingTranslation("那样就好", at: mark)
+        #expect(transcript.pendingTranslation == "那样就好")
+    }
+
+    @Test("It stays while that speech grows or is revised, until a newer one arrives")
+    func provisionalStays() {
+        var transcript = transcript()
+        transcript.apply(.partial("それでいい"), at: 0)
+        transcript.setPendingTranslation("那样就好", at: transcript.pendingMark)
+        transcript.apply(.partial("それでいいですか"), at: 0.2)
+        #expect(transcript.pendingTranslation == "那样就好")
+        transcript.apply(.partial("それはいいですか"), at: 0.4)
+        #expect(transcript.pendingTranslation == "那样就好")
+        transcript.setPendingTranslation("那样可以吗", at: transcript.pendingMark)
+        #expect(transcript.pendingTranslation == "那样可以吗")
+    }
+
+    @Test("One made for speech that has since been kept is not shown")
+    func lateProvisional() {
+        var transcript = transcript()
+        transcript.apply(.partial("はい、そうです。"), at: 0)
+        let mark = transcript.pendingMark
+        transcript.apply(.partial("はい、そうです。それで"), at: 1)
+        transcript.setPendingTranslation("是的，没错。", at: mark)
+        #expect(transcript.pendingTranslation == nil)
+    }
+
+    @Test("When its speech is kept, it stays until the entry's own translation arrives")
+    func provisionalBridgesTheGap() {
+        var transcript = transcript()
+        transcript.apply(.partial("はい、そうです。"), at: 0)
+        transcript.setPendingTranslation("是的，没错", at: transcript.pendingMark)
+        let settled = transcript.apply(.partial("はい、そうです。それで"), at: 1)
+        #expect(transcript.pendingTranslation == "是的，没错")
+        transcript.setTranslation("是的，没错。", for: settled[0].id)
+        #expect(transcript.pendingTranslation == nil)
+    }
+
+    @Test("A newer provisional translation replaces one that was only bridging")
+    func newerProvisionalReplacesBridge() {
+        var transcript = transcript()
+        transcript.apply(.partial("はい、そうです。"), at: 0)
+        transcript.setPendingTranslation("是的，没错", at: transcript.pendingMark)
+        transcript.apply(.partial("はい、そうです。それでいい"), at: 1)
+        transcript.setPendingTranslation("那样就好", at: transcript.pendingMark)
+        #expect(transcript.pendingTranslation == "那样就好")
+    }
+
+    @Test("A final result that keeps nothing new leaves no provisional translation behind")
+    func finalClearsProvisional() {
+        var transcript = transcript()
+        transcript.apply(.partial("uh"), at: 0)
+        transcript.setPendingTranslation("呃", at: transcript.pendingMark)
+        transcript.apply(.final(""), at: 1)
+        #expect(transcript.pendingTranslation == nil)
+    }
+
+    @Test("A blank provisional translation is ignored")
+    func blankProvisional() {
+        var transcript = transcript()
+        transcript.apply(.partial("それでいい"), at: 0)
+        transcript.setPendingTranslation("  ", at: transcript.pendingMark)
+        #expect(transcript.pendingTranslation == nil)
     }
 
     @Test("Resetting clears everything and restarts numbering")
     func reset() {
-        var transcript = Transcript()
-        transcript.apply(.partial("One. Two"))
-        transcript.setPendingTranslation("二", of: "Two")
+        var transcript = transcript()
+        transcript.apply(.final("Hello there."), at: 0)
+        transcript.apply(.partial("How"), at: 1)
         transcript.reset()
         #expect(transcript.entries.isEmpty)
-        #expect(transcript.currentLines.rows.isEmpty)
-        #expect(transcript.apply(.final("Again.")).first?.id == 0)
+        #expect(transcript.pending == "")
+        #expect(transcript.apply(.final("Again."), at: 2).map(\.id) == [0])
     }
 }
 
-@Suite("CaptionText")
-struct CaptionTextTests {
-    @Test("Text within the limit is unchanged")
-    func shortIsUnchanged() {
-        #expect(CaptionText.tail(of: "Hello world", width: 20) == "Hello world")
+@Suite("Transcript on recorded speech")
+struct RecordedTranscriptTests {
+    private struct Run {
+        var transcript: Transcript
+        /// Every entry as it was when first kept.
+        var firstSeen: [Transcript.Entry] = []
+        var widestPending = 0
+        var entriesBeforeLastFinal = 0
+        var changed = false
     }
 
-    @Test("Long spaced text keeps whole words from its end")
-    func longLatinCutsAtWord() {
-        #expect(CaptionText.tail(of: "one two three four five", width: 12) == "…four five")
+    private func replay(_ steps: [RecordedSpeech.Step], rules: ChunkRules) -> Run {
+        var run = Run(transcript: Transcript(rules: rules))
+        for step in steps {
+            if step.isFinal { run.entriesBeforeLastFinal = run.transcript.entries.count }
+            run.transcript.apply(step.update, at: step.time)
+            let entries = run.transcript.entries
+            if Array(entries.prefix(run.firstSeen.count)).map(\.original) != run.firstSeen.map(\.original) {
+                run.changed = true
+            }
+            run.firstSeen.append(contentsOf: entries.dropFirst(run.firstSeen.count))
+            run.widestPending = max(run.widestPending, CaptionText.width(of: run.transcript.pending))
+        }
+        return run
     }
 
-    @Test("A wide character counts as two columns")
-    func wideCharactersCountDouble() {
-        #expect(CaptionText.width(of: "abc") == 3)
-        #expect(CaptionText.width(of: "字幕") == 4)
-        #expect(CaptionText.width(of: "a字") == 3)
+    private func spoken(_ text: String) -> String {
+        String(text.filter { CaptionText.spokenCount(in: String($0)) == 1 })
     }
 
-    @Test("Long unspaced text is cut by characters")
-    func longCJKCutsByCharacter() {
-        #expect(CaptionText.tail(of: "これはテスト用の字幕です", width: 10) == "…字幕です")
+    @Test("Continuous Japanese is kept in pieces long before the recognizer finalizes it")
+    func japaneseIsKeptEarly() {
+        let run = replay(RecordedSpeech.japanese, rules: .japanese)
+        #expect(run.entriesBeforeLastFinal >= 6)
     }
 
-    @Test("A single word longer than the limit is cut inside the word")
-    func oversizedWord() {
-        #expect(CaptionText.tail(of: "abcdefghijklmnop", width: 6) == "…lmnop")
+    @Test("What was kept from the Japanese recording never changed afterwards")
+    func japaneseIsFrozen() {
+        let run = replay(RecordedSpeech.japanese, rules: .japanese)
+        #expect(!run.changed)
     }
 
-    @Test("Empty text stays empty")
-    func empty() {
-        #expect(CaptionText.tail(of: "", width: 10) == "")
+    @Test("The Japanese pieces together say what the final result says, nothing lost or repeated")
+    func japaneseIsComplete() {
+        let run = replay(RecordedSpeech.japanese, rules: .japanese)
+        let final = RecordedSpeech.japanese.last { $0.isFinal }!.text
+        #expect(spoken(run.transcript.entries.map(\.original).joined()) == spoken(final))
+    }
+
+    @Test("The speech in progress never grows much beyond one piece")
+    func pendingStaysShort() {
+        let japanese = replay(RecordedSpeech.japanese, rules: .japanese)
+        #expect(japanese.widestPending <= ChunkRules.japanese.limit * 2)
+        let english = replay(RecordedSpeech.english, rules: .english)
+        #expect(english.widestPending <= ChunkRules.english.limit * 2)
+    }
+
+    @Test("No piece is much longer than the limit")
+    func piecesStayShort() {
+        let japanese = replay(RecordedSpeech.japanese, rules: .japanese)
+        for entry in japanese.transcript.entries {
+            #expect(CaptionText.width(of: entry.original) <= ChunkRules.japanese.limit * 2)
+        }
+        let english = replay(RecordedSpeech.english, rules: .english)
+        for entry in english.transcript.entries {
+            #expect(CaptionText.width(of: entry.original) <= ChunkRules.english.limit * 2)
+        }
+    }
+
+    @Test("The English pieces together say what the final results say")
+    func englishIsComplete() {
+        let run = replay(RecordedSpeech.english, rules: .english)
+        let finals = RecordedSpeech.english.filter(\.isFinal).map(\.text).joined()
+        #expect(!run.changed)
+        #expect(spoken(run.transcript.entries.map(\.original).joined()).lowercased() == spoken(finals).lowercased())
     }
 }
 
 @Suite("SourceLanguage")
 struct SourceLanguageTests {
     @Test("English and Japanese are offered, English first")
-    func allCases() {
+    func cases() {
         #expect(SourceLanguage.allCases == [.english, .japanese])
     }
 
     @Test("Each language names the locale to recognize")
-    func localeIdentifiers() {
+    func locales() {
         #expect(SourceLanguage.english.localeIdentifier == "en-US")
         #expect(SourceLanguage.japanese.localeIdentifier == "ja-JP")
     }
@@ -299,40 +370,16 @@ struct SourceLanguageTests {
     }
 
     @Test("A language survives being stored and read back")
-    func rawValueRoundTrip() {
+    func rawValues() {
         for language in SourceLanguage.allCases {
             #expect(SourceLanguage(rawValue: language.rawValue) == language)
         }
-        #expect(SourceLanguage(rawValue: "klingon") == nil)
-    }
-}
-
-@Suite("Transcript on a long stretch")
-struct TranscriptLongStretchTests {
-    @Test("A growing stretch of mixed English and Japanese keeps earlier sentences on the row")
-    func mixedStretchRunsOn() {
-        var transcript = Transcript()
-        transcript.apply(.partial("This is a demo caption. "))
-        transcript.apply(.partial("This is a demo caption. The window should stay on top. "))
-        transcript.apply(.partial("This is a demo caption. The window should stay on top. これはテスト用の"))
-        #expect(transcript.entries.map(\.original) == ["This is a demo caption.", "The window should stay on top."])
-        #expect(transcript.pending == "これはテスト用の")
-        // Earlier sentences stay on the row, cut at the front to fit it.
-        let shown = transcript.currentLines.original
-        #expect(shown.hasSuffix("The window should stay on top.これはテスト用の"))
-        #expect(CaptionText.width(of: shown) <= Transcript.originalRowWidth)
-    }
-}
-
-@Suite("CaptionText in mixed scripts")
-struct CaptionTextMixedScriptTests {
-    @Test("A space inside Chinese text does not cost the text before it")
-    func spaceInsideChinese() {
-        #expect(CaptionText.tail(of: "这是一条演示字幕。切到别的 app，继续看。", width: 30) == "…字幕。切到别的 app，继续看。")
     }
 
-    @Test("A cut inside an English word within Chinese text still drops the word fragment")
-    func englishWordInsideChinese() {
-        #expect(CaptionText.tail(of: "打开 application 然后看", width: 16) == "…然后看")
+    @Test("Each language has its own rules for cutting speech into pieces")
+    func chunkRules() {
+        #expect(SourceLanguage.japanese.chunkRules == .japanese)
+        #expect(SourceLanguage.english.chunkRules == .english)
+        #expect(ChunkRules.japanese.limit < ChunkRules.english.limit)
     }
 }

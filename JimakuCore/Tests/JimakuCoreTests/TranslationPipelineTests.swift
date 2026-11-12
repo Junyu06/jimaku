@@ -169,3 +169,82 @@ struct TranslationPipelineTests {
         #expect(pipeline.takeNext() == .entry(entry(1)))
     }
 }
+
+@Suite("TranslationPipeline failures and repeats")
+struct TranslationPipelineFailureTests {
+    private func entry(_ id: Int) -> Transcript.Entry {
+        Transcript.Entry(id: id, original: "sentence \(id)", translation: nil)
+    }
+
+    @Test("The same words spoken again later are translated again")
+    func repeatedClauseIsTranslatedAgain() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you")
+        #expect(pipeline.takeNext() == .pending("How are you"))
+        pipeline.finishCurrent()
+        pipeline.offerPending("")
+        pipeline.offerPending("How are you")
+        #expect(pipeline.takeNext() == .pending("How are you"))
+    }
+
+    @Test("A translation that fails makes translation unavailable until one succeeds")
+    func failureAndRecovery() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.settle(entry(0))
+        pipeline.settle(entry(1))
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent(succeeded: false)
+        #expect(pipeline.isTranslationAvailable == false)
+        // It keeps trying, so it can recover.
+        #expect(pipeline.takeNext() == .entry(entry(1)))
+        pipeline.finishCurrent(succeeded: true)
+        #expect(pipeline.isTranslationAvailable)
+    }
+
+    @Test("A provisional translation that fails also makes translation unavailable")
+    func pendingFailure() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you doing")
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent(succeeded: false)
+        #expect(pipeline.isTranslationAvailable == false)
+    }
+
+    @Test("A provisional translation that succeeds restores availability")
+    func pendingSuccessRecovers() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.settle(entry(0))
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent(succeeded: false)
+        pipeline.offerPending("How are you doing")
+        #expect(pipeline.takeNext() == .pending("How are you doing"))
+        pipeline.finishCurrent(succeeded: true)
+        #expect(pipeline.isTranslationAvailable)
+    }
+
+    @Test("After a failure the same speech in progress is offered again, so translation can recover")
+    func pendingRetriedAfterFailure() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.offerPending("How are you doing")
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent(succeeded: false)
+        pipeline.offerPending("How are you doing")
+        #expect(pipeline.takeNext() == .pending("How are you doing"))
+    }
+
+    @Test("Preparing a translator again clears an earlier failure")
+    func preparingClearsFailure() {
+        var pipeline = TranslationPipeline()
+        pipeline.setReadiness(.ready)
+        pipeline.settle(entry(0))
+        _ = pipeline.takeNext()
+        pipeline.finishCurrent(succeeded: false)
+        pipeline.setReadiness(.preparing)
+        #expect(pipeline.isTranslationAvailable)
+    }
+}
