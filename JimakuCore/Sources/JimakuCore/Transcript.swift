@@ -51,8 +51,13 @@ public struct Transcript: Equatable, Sendable {
     /// The text `pendingTranslation` was made from.
     private var pendingTranslationSource: String?
 
-    /// How many sentences of the recognizer's current stretch of speech have settled.
-    private var settledInStretch = 0
+    /// How many characters of the recognizer's current stretch of speech have settled.
+    ///
+    /// The recognizer may rewrite text it already reported, moving or removing
+    /// sentence boundaries. Counting characters rather than sentences keeps the
+    /// settled part and the rest apart even then: what settled stays as it was, and
+    /// nothing after it is lost or settled twice.
+    private var consumedInStretch = 0
 
     public init() {}
 
@@ -62,20 +67,36 @@ public struct Transcript: Equatable, Sendable {
     public mutating func apply(_ update: RecognitionUpdate) -> [Entry] {
         switch update {
         case .partial(let text):
-            let split = CaptionText.sentences(in: text)
-            let settled = settle(split.complete.dropFirst(settledInStretch))
-            settledInStretch = max(settledInStretch, split.complete.count)
+            let (tail, offset) = unsettledTail(of: text)
+            let split = CaptionText.sentences(in: tail)
+            let settled = settle(split.complete)
+            if split.consumed > 0 {
+                consumedInStretch = offset + split.consumed
+            }
             setPending(split.remainder)
             return settled
         case .final(let text):
             // In a final result the unfinished rest is finished too.
-            let split = CaptionText.sentences(in: text)
-            let all = split.remainder.isEmpty ? split.complete : split.complete + [split.remainder]
-            let settled = settle(all.dropFirst(settledInStretch))
-            settledInStretch = 0
+            let (tail, _) = unsettledTail(of: text)
+            let split = CaptionText.sentences(in: tail)
+            let settled = settle(split.remainder.isEmpty ? split.complete : split.complete + [split.remainder])
+            consumedInStretch = 0
             setPending("")
             return settled
         }
+    }
+
+    /// The part of the stretch's text that has not settled yet, and where it starts.
+    private func unsettledTail(of text: String) -> (tail: String, offset: Int) {
+        let characters = Array(text)
+        guard characters.count > consumedInStretch else { return ("", characters.count) }
+        // If a rewrite moved the settled point into the middle of a word, start at
+        // the beginning of that word rather than show half of it.
+        var cut = consumedInStretch
+        while cut > 0, CaptionText.isWordCharacter(characters[cut - 1]), CaptionText.isWordCharacter(characters[cut]) {
+            cut -= 1
+        }
+        return (String(characters[cut...]), cut)
     }
 
     public mutating func setTranslation(_ translation: String, for id: Int) {

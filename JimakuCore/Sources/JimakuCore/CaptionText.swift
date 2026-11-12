@@ -49,7 +49,11 @@ public enum CaptionText {
     /// Live speech can run for a long time before the recognizer calls any of it
     /// final. A sentence that has reached its ending mark is unlikely to change, so
     /// it can be treated as settled without waiting.
-    public static func sentences(in text: String) -> (complete: [String], remainder: String) {
+    ///
+    /// - Returns: the finished sentences, the unfinished rest, and `consumed`: how
+    ///   many characters of `text` the finished sentences took, including the
+    ///   whitespace after the last one.
+    public static func sentences(in text: String) -> (complete: [String], remainder: String, consumed: Int) {
         let characters = Array(text)
         var complete: [String] = []
         var start = 0
@@ -66,35 +70,58 @@ public enum CaptionText {
             }
             let sentence = String(characters[start..<end]).trimmed
             if !sentence.isEmpty { complete.append(sentence) }
+            while end < characters.count, characters[end].isWhitespace {
+                end += 1
+            }
             start = end
             index = end
         }
-        return (complete, String(characters[start...]).trimmed)
+        return (complete, String(characters[start...]).trimmed, complete.isEmpty ? 0 : start)
     }
 
     private static let endings: Set<Character> = ["。", "！", "？", "!", "?", "．", "｡", "."]
     private static let closers: Set<Character> = ["」", "』", "”", "’", "\"", "'", "）", ")"]
+
+    /// Words that are followed by a period without ending a sentence.
+    private static let abbreviations: Set<String> = [
+        "mr", "mrs", "ms", "dr", "st", "prof", "sr", "jr", "vs", "etc", "no", "mt",
+    ]
 
     private static func endsSentence(_ characters: [Character], at index: Int) -> Bool {
         let character = characters[index]
         guard endings.contains(character) else { return false }
         guard character == "." else { return true }
 
+        let previous: Character? = index >= 1 ? characters[index - 1] : nil
+        let next: Character? = index + 1 < characters.count ? characters[index + 1] : nil
+
+        // Periods in a row are a pause ("Wait... maybe"), not an ending.
+        if previous == "." || next == "." { return false }
+
         // A period ends a sentence only when something other than text follows it,
         // which rules out "3.5" and the first period of "U.S.".
-        if index + 1 < characters.count {
-            let next = characters[index + 1]
-            guard next.isWhitespace || closers.contains(next) || endings.contains(next) else { return false }
+        if let next, !(next.isWhitespace || closers.contains(next) || endings.contains(next)) {
+            return false
         }
-        // A single letter before the period is an initial, as in the "S." of "U.S.".
-        if index >= 1, characters[index - 1].isLetter {
-            let beforeLetter = index >= 2 ? characters[index - 2] : " "
-            if beforeLetter.isWhitespace || beforeLetter == "." { return false }
+        // At the very end, a period after a digit may be a decimal point whose
+        // digits have not been spoken yet.
+        if next == nil, let previous, previous.isNumber { return false }
+
+        // The word before the period: an initial ("S." of "U.S.") or a title ("Dr.").
+        var wordStart = index
+        while wordStart > 0, characters[wordStart - 1].isLetter {
+            wordStart -= 1
         }
+        let word = String(characters[wordStart..<index]).lowercased()
+        if word.count == 1 {
+            let beforeWord: Character = wordStart >= 1 ? characters[wordStart - 1] : " "
+            if beforeWord.isWhitespace || beforeWord == "." { return false }
+        }
+        if abbreviations.contains(word) { return false }
         return true
     }
 
-    private static func isWordCharacter(_ character: Character) -> Bool {
+    static func isWordCharacter(_ character: Character) -> Bool {
         width(of: character) == 1 && (character.isLetter || character.isNumber)
     }
 

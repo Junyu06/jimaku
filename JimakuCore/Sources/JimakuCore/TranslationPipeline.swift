@@ -25,14 +25,17 @@ public struct TranslationPipeline: Equatable, Sendable {
     private var isTranslating = false
     private var offeredPending = ""
     private var translatedPending = ""
+    private var lastTranslationFailed = false
 
     public init(limit: Int = 3) {
         backlog = TranslationBacklog(limit: limit)
     }
 
-    /// False once the translator has failed: captions then fall back to the original.
+    /// False when the translator could not be prepared, or its last translation of a
+    /// settled sentence failed. Captions then fall back to the original. It becomes
+    /// true again when a translation succeeds or a translator is prepared anew.
     public var isTranslationAvailable: Bool {
-        readiness != .failed
+        readiness != .failed && !lastTranslationFailed
     }
 
     /// A sentence has settled and should be translated when possible.
@@ -43,6 +46,10 @@ public struct TranslationPipeline: Equatable, Sendable {
     /// The current unfinished end of the speech in progress. Empty when there is none.
     public mutating func offerPending(_ text: String) {
         offeredPending = text
+        // The clause ended. The same words spoken again later are a new clause.
+        if text.isEmpty {
+            translatedPending = ""
+        }
     }
 
     /// The translator became ready, failed, or is being prepared again, for example
@@ -52,6 +59,7 @@ public struct TranslationPipeline: Equatable, Sendable {
         self.readiness = readiness
         isTranslating = false
         translatedPending = ""
+        lastTranslationFailed = false
     }
 
     /// The next thing to translate, or nil when the translator is not ready, is busy,
@@ -77,8 +85,16 @@ public struct TranslationPipeline: Equatable, Sendable {
         return .pending(text)
     }
 
+    /// The current translation is done, without saying how it went. Used for
+    /// provisional translations, whose failures do not matter.
     public mutating func finishCurrent() {
         isTranslating = false
+    }
+
+    /// The translation of a settled sentence is done.
+    public mutating func finishCurrent(succeeded: Bool) {
+        isTranslating = false
+        lastTranslationFailed = !succeeded
     }
 
     public mutating func reset() {
