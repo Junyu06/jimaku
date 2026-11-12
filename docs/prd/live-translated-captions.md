@@ -16,7 +16,7 @@ Accepted requirements for the first version. The Status section at the end says 
 - Source language is chosen by the user: English or Japanese. No automatic detection.
 - Target language is Simplified Chinese.
 - The floating window shows two lines by default: the original line and the translated line. The user can switch to translation only.
-- A line is translated once the recognizer has settled on it.
+- A sentence is translated as soon as it ends, without waiting for the recognizer to finalize it. The unfinished end of the speech shows a provisional translation that updates as it grows. Both rows run on and show their end.
 - The user can switch the translation engine between the Translation framework language packs and the on-device Apple Intelligence model.
 - The user can change the caption text size.
 - The app keeps a log of the captions of the current session, readable in the app. It is not kept after the app is closed.
@@ -41,7 +41,8 @@ Running reliably for a full hour is not part of this acceptance.
 
 ## Status
 
-All requirements are implemented. None is verified on a device. Each case under `docs/cases/` records what was checked.
+All requirements are implemented. Each case under `docs/cases/` records what was checked.
 
-- Floating caption window, text size, display mode, session log, Apple Intelligence translation: seen working in an iPad simulator.
-- Audio capture, system speech recognition, language-pack translation, ending the broadcast from the window: never run. The simulator cannot run them; scripted input stands in for them there.
+- On a physical iPad (2026-11-12, reported by the owner with screenshots): audio capture, speech recognition, language-pack translation, and the floating window worked together on a Japanese video, in the earlier version that translated only finalized speech. That run showed the translation falling behind continuous speech, which led to translating speech in progress.
+- In an iPad simulator: the floating window, translating speech in progress, text size, display mode, the session log, and Apple Intelligence translation.
+- Not yet run on a device: the current version, including the file-locked audio ring, the session lifecycle, and translation of speech in progress. Nothing has run on an iPhone.

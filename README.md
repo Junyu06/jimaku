@@ -1,6 +1,6 @@
 # Jimaku
 
-> **Status: first version written, not yet run on a device.** Every part of the first version is implemented. What has actually been seen working is limited to an iPad simulator: the floating caption window over other apps, the settings, the session log, and translation by the Apple Intelligence model. Capturing other apps' audio, system speech recognition, and language-pack translation cannot run in the simulator, so they have never run at all. Nothing has been tested on a physical iPhone or iPad. See `docs/cases/` for what was checked and how.
+> **Status: first version written; an earlier build has run on a physical iPad.** On 2026-11-12 the owner ran it on an iPad with a Japanese video: audio capture, speech recognition, language-pack translation, and the floating window worked together. That run also showed the translation falling behind continuous speech, so translation now starts while speech is still in progress. The current build has only been checked in an iPad simulator, where scripted input stands in for capture, recognition, and language-pack translation. Nothing has run on an iPhone. See `docs/cases/` for what was checked and how.
 
 Jimaku (字幕, Japanese for "subtitles") is a planned iPhone and iPad app for live translated captions over whatever is playing on the device.
 
@@ -39,7 +39,7 @@ Planned use:
 - Source languages: English and Japanese, chosen manually.
 - Target language: Simplified Chinese.
 - Two caption lines by default (original and translation), adjustable.
-- A line is translated once the recognizer has settled on it.
+- A sentence is translated as soon as it ends; the unfinished end of the speech gets a provisional translation that updates as it grows.
 - A switch between two translation engines: Translation framework language packs, and the on-device Apple Intelligence model.
 - A log of the current session's captions, readable in the app.
 - Closing the floating window ends the session, and also stops the screen broadcast if the system allows the app to do so.
