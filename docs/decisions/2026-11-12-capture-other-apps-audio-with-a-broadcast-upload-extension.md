@@ -11,3 +11,5 @@ Why: a broadcast upload extension is the system-provided way for a third-party a
 Cost accepted: the system asks the user to confirm the broadcast every time a session starts. DRM-protected playback and phone or FaceTime call audio are not delivered.
 
 Status of evidence: not yet verified on a device. Whether the hand-off and background recognition stay alive through a long session is an open question.
+
+Evidence added 2026-11-12: an earlier version of this ran on a physical iPad; see the device entries under `docs/cases/`. The current version has not run on a device.

@@ -151,7 +151,8 @@ final class SessionController {
             guard controller.session.state == .starting else { return }
             controller.session.windowFailedToStart()
             controller.endSession()
-            controller.window.close()
+            // Cut the old window off, so nothing it reports later reaches a new session.
+            controller.window.abandon()
             controller.windowNotice = "悬浮窗没能打开。请留在 Jimaku 里再点一次开始。"
         }
     }
@@ -162,6 +163,9 @@ final class SessionController {
         // If the system never reports the window closed, stop waiting for it.
         watch { controller in
             guard controller.session.state == .stopping else { return }
+            // Cut the old window off before a new session may start, so a close it
+            // reports late cannot end that session.
+            controller.window.abandon()
             controller.session.windowDidClose()
         }
     }
@@ -354,18 +358,22 @@ final class SessionController {
             }
             // The engine changed or the session ended while this was being translated.
             guard let self, self.translatorGeneration.isCurrent(token) else { return }
-            self.pipeline.finishCurrent()
             switch (job, result) {
             case (.entry(let entry), .success(let translation)):
+                self.pipeline.finishCurrent(succeeded: true)
                 self.translationNotice = nil
                 self.transcript.setTranslation(translation, for: entry.id)
             case (.pending(let text), .success(let translation)):
+                self.pipeline.finishCurrent()
                 self.transcript.setPendingTranslation(translation, of: text)
             case (.entry, .failure(let error)):
+                // Translation counts as unavailable until one succeeds, so the
+                // window falls back to the original line instead of waiting.
+                self.pipeline.finishCurrent(succeeded: false)
                 self.translationNotice = "翻译出错：\(error.localizedDescription)"
             case (.pending, .failure):
                 // A provisional translation that failed is simply not shown.
-                break
+                self.pipeline.finishCurrent()
             }
             self.refreshWindow()
             self.pump()
@@ -388,7 +396,7 @@ final class SessionController {
             let placeholder = CaptionPlaceholder.choose(
                 recognition: recognition,
                 audio: audioStatus,
-                translation: pipeline.readiness,
+                translation: pipeline.isTranslationAvailable ? pipeline.readiness : .failed,
                 mode: mode,
                 hasSpeech: !transcript.entries.isEmpty || !transcript.pending.isEmpty
             )

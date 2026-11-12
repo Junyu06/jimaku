@@ -13,3 +13,7 @@ Rejected: a local socket or `CFMessagePort` between the two processes, which nee
 Cost accepted: one writer and one reader only. A reader that falls more than ten seconds behind loses the oldest audio. The App Group capability is required on both targets.
 
 Status of evidence: the ring and the reading path are covered by unit tests and were exercised in the simulator with a synthetic writer. The extension itself has not run on a device.
+
+Evidence added 2026-11-12: an earlier version of this ran on a physical iPad; see the device entries under `docs/cases/`. The current version has not run on a device.
+
+Superseded in part 2026-11-12: the unlocked one-writer-one-reader protocol and the "please end the broadcast" flag were replaced. See `2026-11-12-guard-the-audio-ring-with-a-file-lock.md`.

@@ -12,6 +12,6 @@ This is the usual design for live translated captions: re-translate the growing 
 
 Rejected: waiting for final results, for the reason above. Rejected: translating the whole running guess on every update, which makes the entire translated line flicker and wastes work on text that no longer changes.
 
-Cost accepted: a sentence that settles early is not corrected if the recognizer later revises it. The provisional translation of the unfinished end changes as more is said.
+Cost accepted: a sentence that settles early is not corrected if the recognizer later revises it; the text after it is still kept, by tracking how much of the stretch has settled rather than how many sentences. Sentence endings in English are found by rule, so an unusual abbreviation can still cut a sentence early. The provisional translation of the unfinished end changes as more is said.
 
 Status of evidence: the sentence splitting, the transcript, and the pipeline are covered by unit tests, and the behavior was seen in an iPad simulator with scripted speech. The first version, which waited for final results, ran on a physical iPad; this version has not yet been checked there.

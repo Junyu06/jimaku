@@ -12,7 +12,7 @@ status: not-run
 ## Evidence
 
 - 2026-11-12, physical iPad, earlier version: the floating window showed a Simplified Chinese line under the Japanese line. It lagged behind continuous speech; see translation-003. English, the social feed app, and the missing-language-pack message were not reported. From the owner's screenshots.
-- Physical iPad: not run.
+- Physical iPad, current version: not run.
 - Physical iPhone: not run.
 - 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0, with scripted text standing in for both the recognizer and the translator (the simulator has neither): the original row grew word by word, and the Chinese row changed after each sentence settled and stayed during the next one. This exercises the transcript, the backlog, and the window, not translation.
-- 2026-11-12: the app including `LanguagePackTranslator` compiles for `generic/platform=iOS`. It has never run.
+- 2026-11-12: the app including `LanguagePackTranslator` compiles for `generic/platform=iOS`. The current version has not run on a device.

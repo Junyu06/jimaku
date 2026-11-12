@@ -107,6 +107,18 @@ final class CaptionWindow: NSObject {
         }
     }
 
+    /// Gives up on the current system window without waiting for it: it is detached,
+    /// so nothing it reports later is passed on, and a fresh one is prepared.
+    func abandon() {
+        wantsToFloat = false
+        possibleObservation = nil
+        controller?.delegate = nil
+        controller?.stopPictureInPicture()
+        controller = nil
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        prepare()
+    }
+
     private func startIfWanted() {
         guard wantsToFloat, let controller, controller.isPictureInPicturePossible,
             !controller.isPictureInPictureActive

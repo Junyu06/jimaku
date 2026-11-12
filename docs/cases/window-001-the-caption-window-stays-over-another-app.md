@@ -13,5 +13,5 @@ status: simulated
 
 - 2026-11-12, physical iPad, earlier version: the floating window stayed above a short-video app while its video played. From the owner's screenshots.
 - 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0: after tapping 开始 and opening Safari, the window stayed above Safari and showed a different demo caption four seconds later. Back in the app, tapping 停止 removed the window and the button read 开始. Whether other apps' audio is interrupted was not checked. Simulator only.
-- Physical iPad: not run.
+- Physical iPad, current version: not run.
 - Physical iPhone: not run.
