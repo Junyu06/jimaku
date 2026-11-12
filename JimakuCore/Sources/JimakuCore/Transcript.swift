@@ -11,11 +11,17 @@ public enum RecognitionUpdate: Equatable, Sendable {
 ///
 /// The recognizer sends guesses that keep changing and, eventually, a final version.
 /// With fast continuous speech "eventually" can be ten seconds or more, far too late
-/// for captions. So a sentence settles as soon as it finishes inside a guess, and is
-/// translated then. The unfinished rest is translated provisionally while it grows.
+/// for captions. So a sentence is handed out for translation as soon as it finishes
+/// inside a guess. The unfinished rest is translated provisionally while it grows.
 ///
-/// Both caption rows run on like a ticker: settled sentences followed by the speech
-/// in progress, showing their end.
+/// Until a stretch of speech is final, its sentences are exactly the sentences of
+/// the recognizer's latest guess: if the recognizer rewrites one, the entry changes
+/// with it and is translated again. Nothing is lost or repeated, because nothing is
+/// kept that the latest guess does not say. Translations follow sentences by their
+/// text, so a sentence that did not change keeps its translation.
+///
+/// Both caption rows run on like a ticker: sentences followed by the speech in
+/// progress, showing their end.
 public struct Transcript: Equatable, Sendable {
     /// One settled sentence and, once it arrives, its translation.
     public struct Entry: Equatable, Sendable, Identifiable {
@@ -51,88 +57,61 @@ public struct Transcript: Equatable, Sendable {
     /// The text `pendingTranslation` was made from.
     private var pendingTranslationSource: String?
 
-    /// The beginning of the recognizer's current stretch of speech that has settled,
-    /// as it read in the latest guess.
-    ///
-    /// The recognizer may rewrite text it already reported, moving or removing
-    /// sentence boundaries or changing the length of what came before them. So the
-    /// settled part is found again in every new guess rather than counted: first as
-    /// an exact beginning, otherwise by looking for the clause that was still in
-    /// progress. What settled stays as it was; what follows is neither lost nor
-    /// settled twice.
-    private var settledPrefix = ""
+    /// Entries before this index belong to stretches that are final. The rest
+    /// belong to the stretch in progress and still follow the recognizer.
+    private var finalCount = 0
+
+    /// Translations received for sentences of the stretch in progress, by text.
+    private var stretchTranslations: [String: String] = [:]
+
+    /// Sentences of the stretch in progress already handed out for translation.
+    private var handedOut: Set<String> = []
 
     public init() {}
 
-    /// Takes in a recognizer update. Returns the sentences it settled, oldest first,
-    /// so the caller can send them for translation.
+    /// Takes in a recognizer update. Returns the sentences that are new or rewritten
+    /// and need translating, oldest first.
     @discardableResult
     public mutating func apply(_ update: RecognitionUpdate) -> [Entry] {
         switch update {
         case .partial(let text):
-            let characters = Array(text)
-            guard let cut = settledBoundary(in: characters) else {
-                // The guess shrank to within what has already settled.
-                setPending("")
-                return []
-            }
-            let split = CaptionText.sentences(in: String(characters[cut...]))
-            let settled = settle(split.complete)
-            settledPrefix = String(characters[..<(cut + split.consumed)])
-            setPending(split.remainder)
-            return settled
+            let split = CaptionText.sentences(in: text)
+            return follow(split.complete, pending: split.remainder, isFinal: false)
         case .final(let text):
             // In a final result the unfinished rest is finished too.
-            let characters = Array(text)
-            let cut = settledBoundary(in: characters) ?? characters.count
-            let split = CaptionText.sentences(in: String(characters[cut...]))
-            let settled = settle(split.remainder.isEmpty ? split.complete : split.complete + [split.remainder])
-            settledPrefix = ""
-            setPending("")
-            return settled
+            let split = CaptionText.sentences(in: text)
+            let all = split.remainder.isEmpty ? split.complete : split.complete + [split.remainder]
+            return follow(all, pending: "", isFinal: true)
         }
     }
 
-    /// Where the unsettled part of the stretch begins in a new guess. Nil when the
-    /// guess does not reach past what has settled.
-    private func settledBoundary(in characters: [Character]) -> Int? {
-        let settled = Array(settledPrefix)
-        if settled.isEmpty { return 0 }
-
-        // The usual case: the guess still begins with what settled.
-        if characters.count >= settled.count, characters.starts(with: settled) {
-            return settled.count
-        }
-        // The guess is shorter than, and part of, what settled.
-        if settled.starts(with: characters) { return nil }
-
-        // The settled part was rewritten. Look for the clause that was in progress;
-        // if it appears more than once, take the place nearest to where it was.
-        let anchor = Array(pending.prefix(12))
-        if !anchor.isEmpty, characters.count >= anchor.count {
-            var best: Int?
-            for start in 0...(characters.count - anchor.count)
-            where characters[start..<(start + anchor.count)].elementsEqual(anchor) {
-                if best == nil || abs(start - settled.count) < abs(best! - settled.count) {
-                    best = start
-                }
-            }
-            if let best { return best }
-        }
-
-        // Nothing to hold on to: keep the same position, moved to a word start.
-        guard characters.count > settled.count else { return nil }
-        var cut = settled.count
-        while cut > 0, CaptionText.isWordCharacter(characters[cut - 1]), CaptionText.isWordCharacter(characters[cut]) {
-            cut -= 1
-        }
-        return cut
-    }
-
+    /// Sets the translation of the entry with this identifier.
     public mutating func setTranslation(_ translation: String, for id: Int) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        setTranslation(translation, for: entries[index])
+    }
+
+    /// Delivers the translation of an entry as it was when handed out. If the
+    /// recognizer has rewritten that sentence since, the translation is dropped; if
+    /// the sentence only moved, the translation follows it.
+    public mutating func setTranslation(_ translation: String, for entry: Entry) {
         let text = translation.trimmed
-        guard !text.isEmpty, let index = entries.firstIndex(where: { $0.id == id }) else { return }
-        entries[index].translation = text
+        guard !text.isEmpty else { return }
+        if entry.id < finalCount {
+            // The stretch is final. Its sentences no longer change, but the one this
+            // translation is for may sit at a different index than when handed out.
+            let nearby = max(entry.id - 8, 0)..<min(entry.id + 9, finalCount)
+            let index =
+                entries[entry.id].original == entry.original
+                ? entry.id
+                : nearby.first { entries[$0].original == entry.original && entries[$0].translation == nil }
+            if let index { entries[index].translation = text }
+            return
+        }
+        stretchTranslations[entry.original] = text
+        for index in finalCount..<entries.count where entries[index].original == entry.original {
+            entries[index].translation = text
+        }
     }
 
     /// Offers a provisional translation made from `source`. It is kept only if the
@@ -160,16 +139,30 @@ public struct Transcript: Equatable, Sendable {
         )
     }
 
-    private mutating func settle(_ sentences: some Sequence<String>) -> [Entry] {
-        var settled: [Entry] = []
-        for sentence in sentences {
-            let text = sentence.trimmed
-            guard !text.isEmpty else { continue }
-            let entry = Entry(id: entries.count, original: text, translation: nil)
-            entries.append(entry)
-            settled.append(entry)
+    /// Makes the stretch in progress say exactly `sentences`, keeping translations
+    /// of sentences whose text did not change.
+    private mutating func follow(_ sentences: [String], pending: String, isFinal: Bool) -> [Entry] {
+        let previous = Array(entries[finalCount...])
+        var updated: [Entry] = []
+        var toTranslate: [Entry] = []
+        for sentence in sentences.map(\.trimmed) where !sentence.isEmpty {
+            let offset = updated.count
+            let unchanged = offset < previous.count && previous[offset].original == sentence
+            let translation = (unchanged ? previous[offset].translation : nil) ?? stretchTranslations[sentence]
+            let entry = Entry(id: finalCount + offset, original: sentence, translation: translation)
+            updated.append(entry)
+            if translation == nil, handedOut.insert(sentence).inserted {
+                toTranslate.append(entry)
+            }
         }
-        return settled
+        entries.replaceSubrange(finalCount..., with: updated)
+        setPending(pending)
+        if isFinal {
+            finalCount = entries.count
+            stretchTranslations = [:]
+            handedOut = []
+        }
+        return toTranslate
     }
 
     private mutating func setPending(_ text: String) {

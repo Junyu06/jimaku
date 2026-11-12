@@ -360,7 +360,7 @@ final class SessionController {
             guard let self, self.translatorGeneration.isCurrent(token) else { return }
             switch (job, result) {
             case (.entry(let entry), .success(let translation)):
-                self.transcript.setTranslation(translation, for: entry.id)
+                self.transcript.setTranslation(translation, for: entry)
             case (.pending(let text), .success(let translation)):
                 self.transcript.setPendingTranslation(translation, of: text)
             case (_, .failure):
