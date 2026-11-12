@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: accepted
+status: superseded in part by 2026-11-12-translate-a-sentence-only-when-it-has-ended.md. Keeping speech in pieces that never change, counted in spoken characters, still stands. The provisional translation is gone, and where a piece ends and how long it may be have changed.
 supersedes: the parts of 2026-11-12-translate-speech-while-it-is-still-in-progress.md that make kept sentences follow the recognizer's latest guess
 
 # Keep speech in pieces that never change once kept

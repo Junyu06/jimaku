@@ -11,11 +11,17 @@ public struct ChunkRules: Equatable, Sendable {
         self.limit = limit
     }
 
-    /// About three seconds of Japanese at most, and no cut after only a word or two.
-    public static let japanese = ChunkRules(clauseMinimum: 12, limit: 36)
+    /// A piece may run this far past the limit to reach a mark that ends it,
+    /// rather than be cut just short of one.
+    public var reach: Int { limit + limit / 4 }
 
-    /// About a dozen English words at most.
-    public static let english = ChunkRules(clauseMinimum: 20, limit: 60)
+    /// A comma cuts Japanese only after about two seconds of speech, and speech
+    /// with no ending in sight is cut after about four.
+    public static let japanese = ChunkRules(clauseMinimum: 24, limit: 48)
+
+    /// The same in English: a comma cuts after about seven words, and speech with
+    /// no ending in sight after about fourteen.
+    public static let english = ChunkRules(clauseMinimum: 36, limit: 72)
 }
 
 extension SourceLanguage {
@@ -87,7 +93,7 @@ extension CaptionText {
 
             let mark = nextMarkedEnd(characters, from: start, rules: rules)
             let cut: Int
-            if let mark, width(characters[start..<mark]) <= rules.limit + rules.clauseMinimum {
+            if let mark, width(characters[start..<mark]) <= rules.reach {
                 // A marked end is near. If it is not stable yet, wait for it rather
                 // than cut just before it.
                 guard mark <= stableEnd else { break }
@@ -165,9 +171,10 @@ extension CaptionText {
     }
 
     /// Where to cut speech that runs on without a mark: within the limit, the last
-    /// place where a joining word such as "and" starts, else the last place where
-    /// any word starts; failing both, the first word start after the limit. Text
-    /// with no word start at all is cut at the limit once it is twice as long.
+    /// place where a clause is likely to end (before an English joining word such
+    /// as "and", after a Japanese joining form such as から), else the last place
+    /// where any word starts; failing both, the first word start after the limit.
+    /// Text with no word start at all is cut at the limit once it is twice as long.
     private static func unmarkedEnd(
         _ characters: [Character],
         from start: Int,
@@ -198,7 +205,9 @@ extension CaptionText {
             }
             if columns >= rules.clauseMinimum {
                 best = index
-                if startsJoiningWord(characters, at: index) { bestJoining = index }
+                if startsJoiningWord(characters, at: index) || followsJoiningForm(characters, at: index) {
+                    bestJoining = index
+                }
             }
         }
         if let cut = bestJoining ?? best { return cut }
@@ -211,6 +220,20 @@ extension CaptionText {
         "and", "but", "or", "so", "because", "that", "which", "who", "when", "where", "while", "if", "then",
         "although", "though", "since",
     ]
+
+    /// Japanese endings that usually close a clause and lead into the next. The
+    /// short forms て, って, and し are left out: they also end the first half of
+    /// compound words such as 出し入れ and 持って行く.
+    private static let joiningForms: [[Character]] = [
+        "けれど", "けど", "から", "ので", "のに", "たら", "なら", "ても",
+    ].map(Array.init)
+
+    /// Whether the text just before `index` ends with a Japanese joining form.
+    private static func followsJoiningForm(_ characters: [Character], at index: Int) -> Bool {
+        joiningForms.contains { form in
+            index >= form.count && Array(characters[(index - form.count)..<index]) == form
+        }
+    }
 
     private static func startsJoiningWord(_ characters: [Character], at index: Int) -> Bool {
         var end = index

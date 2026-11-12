@@ -92,13 +92,53 @@ struct CaptionBoardTests {
         #expect(!board.isEmpty)
     }
 
-    @Test("Translations are settled text; the provisional translation follows as tentative")
+    @Test("Translations are settled text, and nothing else is shown as translation")
     func translationRow() {
-        var transcript = said([("Hello.", "你好。")], pending: "How are")
-        transcript.setPendingTranslation("你怎么", at: transcript.pendingMark)
         var board = CaptionBoard(layout: layout)
-        board.show(transcript)
-        #expect(board.rows[1].lines == [CaptionLine(settled: "你好。", tentative: "你怎么")])
+        board.show(said([("Hello.", "你好。")]))
+        #expect(board.rows[1].lines == [CaptionLine(settled: "你好。")])
+    }
+
+    @Test("While speech waits to be translated, the translation row ends with a waiting mark")
+    func waitingMark() {
+        var board = CaptionBoard(layout: layout)
+        board.show(said([("Hello.", "你好。")], pending: "How are"))
+        #expect(board.rows[1].lines == [CaptionLine(settled: "你好。", tentative: "…")])
+
+        var untranslated = CaptionBoard(layout: layout)
+        untranslated.show(said([("Hello.", nil)]), translating: true)
+        #expect(untranslated.rows[1].lines == [CaptionLine(settled: "", tentative: "…")])
+    }
+
+    @Test("An entry nobody is translating any more does not keep the waiting mark up")
+    func abandonedEntryDoesNotWait() {
+        var board = CaptionBoard(layout: layout)
+        board.show(said([("Hello.", nil)]), translating: false)
+        #expect(board.rows[1].lines.isEmpty)
+    }
+
+    @Test("The waiting mark goes away when nothing is waiting")
+    func waitingMarkGoesAway() {
+        var transcript = said([("Hello.", nil)])
+        var board = CaptionBoard(layout: layout)
+        board.show(transcript, translating: true)
+        transcript.setTranslation("你好。", for: 0)
+        board.show(transcript, translating: false)
+        #expect(board.rows[1].lines == [CaptionLine(settled: "你好。")])
+    }
+
+    @Test("The waiting mark never takes a line of its own")
+    func waitingMarkDoesNotRoll() {
+        var board = CaptionBoard(layout: layout)
+        board.show(said([("One.", "一二三四五六"), ("Two.", "七八九十甲乙")], pending: "Three"))
+        #expect(board.rows[1].lines == [CaptionLine(settled: "一二三四五六"), CaptionLine(settled: "七八九十甲乙")])
+    }
+
+    @Test("An entry that was overtaken does not keep the waiting mark up")
+    func overtakenEntryDoesNotWait() {
+        var board = CaptionBoard(layout: layout)
+        board.show(said([("One.", nil), ("Two.", "二。")]))
+        #expect(board.rows[1].lines == [CaptionLine(settled: "二。")])
     }
 
     @Test("Showing the same transcript twice adds nothing")
@@ -115,8 +155,8 @@ struct CaptionBoardTests {
     func laterTranslation() {
         var transcript = said([("Hello.", nil)])
         var board = CaptionBoard(layout: layout)
-        board.show(transcript)
-        #expect(texts(board.rows[1]).isEmpty)
+        board.show(transcript, translating: true)
+        #expect(board.rows[1].lines == [CaptionLine(settled: "", tentative: "…")])
         transcript.setTranslation("你好。", for: 0)
         board.show(transcript)
         #expect(texts(board.rows[1]) == ["你好。"])
@@ -139,39 +179,6 @@ struct CaptionBoardTests {
         board.show(said([("Hello there my friend.", "你好我的朋友。"), ("How are you today?", "你今天过得怎么样？")]))
         #expect(texts(board.rows[0]) == ["today?"])
         #expect(texts(board.rows[1]) == ["友。你今天过", "得怎么样？"])
-    }
-
-    @Test("A long provisional translation shows only its beginning")
-    func longProvisional() {
-        var transcript = said([("Hello.", "你好。")], pending: "How are you doing today my friend")
-        transcript.setPendingTranslation("你今天过得怎么样啊我的朋友们好", at: transcript.pendingMark)
-        var board = CaptionBoard(layout: layout)
-        board.show(transcript)
-        #expect(
-            board.rows[1].lines == [
-                CaptionLine(settled: "你好。", tentative: "你今天"),
-                CaptionLine(settled: "", tentative: "过得怎"),
-            ])
-    }
-
-    @Test("When a translation takes the place of its provisional one, the row does not roll")
-    func settlingDoesNotRoll() {
-        var transcript = Transcript(rules: .english)
-        transcript.apply(.final("One two."), at: 0)
-        transcript.setTranslation("一二三四五。", for: 0)
-        transcript.apply(.partial("Three four five."), at: 1)
-        transcript.setPendingTranslation("甲乙丙丁戊。", at: transcript.pendingMark)
-        var board = CaptionBoard(layout: layout)
-        board.show(transcript)
-        #expect(texts(board.rows[1]) == ["一二三四五。", "甲乙丙丁戊。"])
-
-        let kept = transcript.apply(.partial("Three four five. Six"), at: 2)
-        board.show(transcript)
-        transcript.setTranslation("甲乙丙丁戊。", for: kept[0].id)
-        board.show(transcript)
-        #expect(
-            board.rows[1].lines == [CaptionLine(settled: "一二三四五。"), CaptionLine(settled: "甲乙丙丁戊。")]
-        )
     }
 
     @Test("The board breaks lines by the widths its layout carries")
@@ -199,10 +206,11 @@ struct CaptionBoardTests {
         )
         board.relay(wide, showing: transcript)
         #expect(board.rows.map(\.role) == [.primary])
-        #expect(texts(board.rows[0]) == ["你好。你好吗？"])
+        // "Fine" is still waiting to be translated.
+        #expect(board.rows[0].lines == [CaptionLine(settled: "你好。你好吗？", tentative: "…")])
         // Nothing is added twice afterwards.
         board.show(transcript)
-        #expect(texts(board.rows[0]) == ["你好。你好吗？"])
+        #expect(board.rows[0].lines == [CaptionLine(settled: "你好。你好吗？", tentative: "…")])
     }
 
     @Test("A board with only the original row shows it as the main row")
