@@ -141,10 +141,15 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
     /// it finalizes continuous speech only every several seconds.
     ///
     /// The analyzer finalizes the audio it has taken in, whatever time it is
-    /// given. So this waits until the analyzer has taken in the audio up to the
-    /// pause, which shows in its volatile range within a few hundredths of a
-    /// second, and then asks it to finalize all it has. The caller holds the
+    /// given. So this waits until the analyzer has taken in the speech before
+    /// the pause, which shows in its volatile range within a few hundredths of
+    /// a second, and then asks it to finalize all it has. The caller holds the
     /// later audio back meanwhile, so the final result ends at the pause.
+    ///
+    /// The volatile range need not reach the pause itself. During a broadcast
+    /// it stops about a tenth of a second short of the audio handed over and
+    /// stays there until more audio comes. The audio just before a pause is
+    /// quiet, so a range that reaches into that quiet has all the speech.
     ///
     /// If the analyzer has not taken the audio in after a second, it is far
     /// behind, and asking now would finalize at some earlier place or do nothing.
@@ -156,12 +161,11 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
     /// after a quarter of a second and lets the audio go on; the request then
     /// finishes on its own.
     private static func finalize(_ analyzer: SpeechAnalyzer, at time: CMTime) async {
-        // The converter may keep a few samples to itself, so "taken in" allows
-        // for a fiftieth of a second, which is still well inside the quiet.
-        let reached = time.seconds - 0.02
         var taken = false
         for _ in 0..<100 {
-            if let end = await analyzer.volatileRange?.end.seconds, end >= reached {
+            if let end = await analyzer.volatileRange?.end.seconds,
+                PauseDetector.hasSpeech(before: time.seconds, heardTo: end)
+            {
                 taken = true
                 break
             }

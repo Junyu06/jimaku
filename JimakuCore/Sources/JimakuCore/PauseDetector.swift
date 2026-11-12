@@ -28,6 +28,17 @@ public struct PauseDetector: Equatable, Sendable {
     /// The loudness heard lately fades to half in this many seconds.
     static let halfLife = 5.0
 
+    /// Whether a recognizer that has heard the audio up to `end` has all the
+    /// speech before the pause at `pause`, both in seconds of audio.
+    ///
+    /// The audio just before a pause is quiet, for at least `pauseInLongSpeech`.
+    /// So the speech is all in once the recognizer has heard into that quiet;
+    /// it need not have heard up to the pause itself. Two steps are left as a
+    /// margin, since quiet is judged a step at a time.
+    public static func hasSpeech(before pause: Double, heardTo end: Double) -> Bool {
+        end >= pause - (pauseInLongSpeech - 2 * step)
+    }
+
     private let samplesPerStep: Int
     private let fade: Double
 
