@@ -360,23 +360,26 @@ final class SessionController {
             guard let self, self.translatorGeneration.isCurrent(token) else { return }
             switch (job, result) {
             case (.entry(let entry), .success(let translation)):
-                self.pipeline.finishCurrent(succeeded: true)
-                self.translationNotice = nil
                 self.transcript.setTranslation(translation, for: entry.id)
             case (.pending(let text), .success(let translation)):
-                self.pipeline.finishCurrent()
                 self.transcript.setPendingTranslation(translation, of: text)
-            case (.entry, .failure(let error)):
-                // Translation counts as unavailable until one succeeds, so the
-                // window falls back to the original line instead of waiting.
+            case (_, .failure):
+                break
+            }
+            switch result {
+            case .success:
+                self.pipeline.finishCurrent(succeeded: true)
+                self.translationNotice = nil
+                self.refreshWindow()
+                self.pump()
+            case .failure(let error):
+                // Translation counts as unavailable until one succeeds, so the window
+                // falls back to the original line instead of waiting. The next
+                // recognizer update tries again; retrying at once would spin.
                 self.pipeline.finishCurrent(succeeded: false)
                 self.translationNotice = "翻译出错：\(error.localizedDescription)"
-            case (.pending, .failure):
-                // A provisional translation that failed is simply not shown.
-                self.pipeline.finishCurrent()
+                self.refreshWindow()
             }
-            self.refreshWindow()
-            self.pump()
         }
     }
 

@@ -31,8 +31,7 @@ public struct TranslationPipeline: Equatable, Sendable {
         backlog = TranslationBacklog(limit: limit)
     }
 
-    /// False when the translator could not be prepared, or its last translation of a
-    /// settled sentence failed. Captions then fall back to the original. It becomes
+    /// False when the translator could not be prepared, or its last translation failed. Captions then fall back to the original. It becomes
     /// true again when a translation succeeds or a translator is prepared anew.
     public var isTranslationAvailable: Bool {
         readiness != .failed && !lastTranslationFailed
@@ -85,16 +84,20 @@ public struct TranslationPipeline: Equatable, Sendable {
         return .pending(text)
     }
 
-    /// The current translation is done, without saying how it went. Used for
-    /// provisional translations, whose failures do not matter.
+    /// The current translation is done, without saying how it went.
     public mutating func finishCurrent() {
         isTranslating = false
     }
 
-    /// The translation of a settled sentence is done.
+    /// The current translation is done, settled sentence or speech in progress alike.
+    /// A failure makes translation unavailable until one succeeds; the speech in
+    /// progress is then offered again, so translation can recover.
     public mutating func finishCurrent(succeeded: Bool) {
         isTranslating = false
         lastTranslationFailed = !succeeded
+        if !succeeded {
+            translatedPending = ""
+        }
     }
 
     public mutating func reset() {

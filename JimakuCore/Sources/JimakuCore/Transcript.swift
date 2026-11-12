@@ -51,13 +51,16 @@ public struct Transcript: Equatable, Sendable {
     /// The text `pendingTranslation` was made from.
     private var pendingTranslationSource: String?
 
-    /// How many characters of the recognizer's current stretch of speech have settled.
+    /// The beginning of the recognizer's current stretch of speech that has settled,
+    /// as it read in the latest guess.
     ///
     /// The recognizer may rewrite text it already reported, moving or removing
-    /// sentence boundaries. Counting characters rather than sentences keeps the
-    /// settled part and the rest apart even then: what settled stays as it was, and
-    /// nothing after it is lost or settled twice.
-    private var consumedInStretch = 0
+    /// sentence boundaries or changing the length of what came before them. So the
+    /// settled part is found again in every new guess rather than counted: first as
+    /// an exact beginning, otherwise by looking for the clause that was still in
+    /// progress. What settled stays as it was; what follows is neither lost nor
+    /// settled twice.
+    private var settledPrefix = ""
 
     public init() {}
 
@@ -67,36 +70,63 @@ public struct Transcript: Equatable, Sendable {
     public mutating func apply(_ update: RecognitionUpdate) -> [Entry] {
         switch update {
         case .partial(let text):
-            let (tail, offset) = unsettledTail(of: text)
-            let split = CaptionText.sentences(in: tail)
-            let settled = settle(split.complete)
-            if split.consumed > 0 {
-                consumedInStretch = offset + split.consumed
+            let characters = Array(text)
+            guard let cut = settledBoundary(in: characters) else {
+                // The guess shrank to within what has already settled.
+                setPending("")
+                return []
             }
+            let split = CaptionText.sentences(in: String(characters[cut...]))
+            let settled = settle(split.complete)
+            settledPrefix = String(characters[..<(cut + split.consumed)])
             setPending(split.remainder)
             return settled
         case .final(let text):
             // In a final result the unfinished rest is finished too.
-            let (tail, _) = unsettledTail(of: text)
-            let split = CaptionText.sentences(in: tail)
+            let characters = Array(text)
+            let cut = settledBoundary(in: characters) ?? characters.count
+            let split = CaptionText.sentences(in: String(characters[cut...]))
             let settled = settle(split.remainder.isEmpty ? split.complete : split.complete + [split.remainder])
-            consumedInStretch = 0
+            settledPrefix = ""
             setPending("")
             return settled
         }
     }
 
-    /// The part of the stretch's text that has not settled yet, and where it starts.
-    private func unsettledTail(of text: String) -> (tail: String, offset: Int) {
-        let characters = Array(text)
-        guard characters.count > consumedInStretch else { return ("", characters.count) }
-        // If a rewrite moved the settled point into the middle of a word, start at
-        // the beginning of that word rather than show half of it.
-        var cut = consumedInStretch
+    /// Where the unsettled part of the stretch begins in a new guess. Nil when the
+    /// guess does not reach past what has settled.
+    private func settledBoundary(in characters: [Character]) -> Int? {
+        let settled = Array(settledPrefix)
+        if settled.isEmpty { return 0 }
+
+        // The usual case: the guess still begins with what settled.
+        if characters.count >= settled.count, characters.starts(with: settled) {
+            return settled.count
+        }
+        // The guess is shorter than, and part of, what settled.
+        if settled.starts(with: characters) { return nil }
+
+        // The settled part was rewritten. Look for the clause that was in progress;
+        // if it appears more than once, take the place nearest to where it was.
+        let anchor = Array(pending.prefix(12))
+        if !anchor.isEmpty, characters.count >= anchor.count {
+            var best: Int?
+            for start in 0...(characters.count - anchor.count)
+            where characters[start..<(start + anchor.count)].elementsEqual(anchor) {
+                if best == nil || abs(start - settled.count) < abs(best! - settled.count) {
+                    best = start
+                }
+            }
+            if let best { return best }
+        }
+
+        // Nothing to hold on to: keep the same position, moved to a word start.
+        guard characters.count > settled.count else { return nil }
+        var cut = settled.count
         while cut > 0, CaptionText.isWordCharacter(characters[cut - 1]), CaptionText.isWordCharacter(characters[cut]) {
             cut -= 1
         }
-        return (String(characters[cut...]), cut)
+        return cut
     }
 
     public mutating func setTranslation(_ translation: String, for id: Int) {
