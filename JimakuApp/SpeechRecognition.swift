@@ -12,6 +12,11 @@ protocol SpeechRecognizing: AnyObject {
     /// Hands over the next samples, in the shared ring's format.
     func append(_ samples: [Int16])
 
+    /// Tells the recognizer that the speaker paused at the end of what has been
+    /// handed over. It then settles on the speech up to there and reports it as
+    /// final without waiting for more.
+    func speakerPaused()
+
     func stop() async
 }
 
@@ -33,9 +38,20 @@ enum SpeechRecognitionError: LocalizedError {
 @MainActor
 final class SystemSpeechRecognizer: SpeechRecognizing {
     private var analyzer: SpeechAnalyzer?
-    private var input: AsyncStream<AnalyzerInput>.Continuation?
+    /// What goes to the analyzer, in order: audio, and pauses at which it is
+    /// asked to finalize.
+    private var feed: AsyncStream<Feed>.Continuation?
+    private var feedTask: Task<Void, Never>?
     private var converter: PCMConverter?
     private var resultsTask: Task<Void, Never>?
+    /// How many samples have been handed over since the analyzer started. The
+    /// analyzer counts its audio time from the first of them.
+    private var handedOver = 0
+
+    private enum Feed: @unchecked Sendable {
+        case audio(AnalyzerInput)
+        case pause(CMTime)
+    }
 
     func start(language: SourceLanguage) async throws -> AsyncThrowingStream<RecognitionUpdate, Error> {
         await stop()
@@ -89,29 +105,101 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
             }
         }
 
+        // Audio and pauses go to the analyzer one after another, so that the
+        // audio after a pause is held back until the analyzer has finalized the
+        // speech before it.
+        let (feeds, feedContinuation) = AsyncStream<Feed>.makeStream()
+        feedTask = Task {
+            for await item in feeds {
+                switch item {
+                case .audio(let input): inputContinuation.yield(input)
+                case .pause(let time): await Self.finalize(analyzer, at: time)
+                }
+            }
+            inputContinuation.finish()
+        }
+
         self.analyzer = analyzer
-        self.input = inputContinuation
+        self.feed = feedContinuation
         self.converter = converter
+        handedOver = 0
         return updates
     }
 
     func append(_ samples: [Int16]) {
-        guard let input, let buffer = converter?.convert(samples) else { return }
-        input.yield(AnalyzerInput(buffer: buffer))
+        guard let feed, let buffer = converter?.convert(samples) else { return }
+        feed.yield(.audio(AnalyzerInput(buffer: buffer)))
+        handedOver += samples.count
+    }
+
+    func speakerPaused() {
+        let time = CMTime(value: CMTimeValue(handedOver), timescale: CMTimeScale(AudioRing.sampleRate))
+        feed?.yield(.pause(time))
+    }
+
+    /// Makes the analyzer report the speech up to `time` as final now. Left alone
+    /// it finalizes continuous speech only every several seconds.
+    ///
+    /// The analyzer finalizes the audio it has taken in, whatever time it is
+    /// given. So this waits until the analyzer has taken in the audio up to the
+    /// pause, which shows in its volatile range within a few hundredths of a
+    /// second, and then asks it to finalize all it has. The caller holds the
+    /// later audio back meanwhile, so the final result ends at the pause.
+    ///
+    /// If the analyzer has not taken the audio in after a second, it is far
+    /// behind, and asking now would finalize at some earlier place or do nothing.
+    /// The pause is then let go: nothing is asked, the audio goes on, and the
+    /// caption ends by the other rules.
+    ///
+    /// The request usually returns in a few hundredths of a second, but now and
+    /// then it does not return until more audio arrives. This gives up waiting
+    /// after a quarter of a second and lets the audio go on; the request then
+    /// finishes on its own.
+    private static func finalize(_ analyzer: SpeechAnalyzer, at time: CMTime) async {
+        // The converter may keep a few samples to itself, so "taken in" allows
+        // for a fiftieth of a second, which is still well inside the quiet.
+        let reached = time.seconds - 0.02
+        var taken = false
+        for _ in 0..<100 {
+            if let end = await analyzer.volatileRange?.end.seconds, end >= reached {
+                taken = true
+                break
+            }
+            try? await Task.sleep(for: .milliseconds(10))
+            if Task.isCancelled { return }
+        }
+        guard taken else { return }
+        let request = Request()
+        Task {
+            try? await analyzer.finalize(through: nil)
+            request.isDone = true
+        }
+        for _ in 0..<25 where !request.isDone {
+            try? await Task.sleep(for: .milliseconds(10))
+            if Task.isCancelled { return }
+        }
+    }
+
+    /// Whether a request to finalize has returned.
+    private final class Request {
+        var isDone = false
     }
 
     func stop() async {
         // Take everything first and only then wait, so that a start which runs
         // while this is waiting keeps the resources it creates.
         let analyzer = analyzer
-        let input = input
+        let feed = feed
+        let feedTask = feedTask
         let resultsTask = resultsTask
         self.analyzer = nil
-        self.input = nil
+        self.feed = nil
+        self.feedTask = nil
         self.converter = nil
         self.resultsTask = nil
 
-        input?.finish()
+        feed?.finish()
+        feedTask?.cancel()
         resultsTask?.cancel()
         await analyzer?.cancelAndFinishNow()
     }
@@ -119,9 +207,9 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
 
 #if targetEnvironment(simulator)
     /// The simulator has no system speech model, so this replays a demo speech the
-    /// way the recognizer was seen to report continuous speech: guesses in bursts
-    /// about a second apart, ending marks in older text that come and go, and one
-    /// final result at the very end. Simulator only.
+    /// way the recognizer reports speech when it is told of every pause: guesses
+    /// in bursts about a second apart while a sentence is spoken, then the
+    /// sentence as a final result. Simulator only.
     @MainActor
     final class ScriptedSpeechRecognizer: SpeechRecognizing {
         private var task: Task<Void, Never>?
@@ -129,23 +217,27 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         func start(language: SourceLanguage) async throws -> AsyncThrowingStream<RecognitionUpdate, Error> {
             await stop()
             let sentences = DemoCaptions.speech(in: language).map(\.original)
-            let isSpaced = sentences.contains { $0.contains(" ") }
-            let text = Array(sentences.joined(separator: isSpaced ? " " : ""))
-            // A burst adds about a second of speech, in a few guesses.
-            let steps: [Int] = isSpaced ? Self.wordEnds(in: text) : Array(stride(from: 2, through: text.count, by: 2)) + [text.count]
-            let stepsPerBurst = isSpaced ? 3 : 4
-
             let (updates, continuation) = AsyncThrowingStream<RecognitionUpdate, Error>.makeStream()
             task = Task {
                 while !Task.isCancelled {
-                    for (index, end) in steps.enumerated() {
-                        let burst = index / stepsPerBurst
-                        continuation.yield(.partial(Self.guess(text, upTo: end, burst: burst)))
-                        let endsBurst = index % stepsPerBurst == stepsPerBurst - 1
-                        try? await Task.sleep(for: .milliseconds(endsBurst ? 950 : 10))
-                        if Task.isCancelled { break }
+                    for sentence in sentences {
+                        let text = Array(sentence)
+                        let isSpaced = sentence.contains(" ")
+                        // A burst adds about a second of speech, in a few guesses.
+                        let steps: [Int] =
+                            isSpaced ? Self.wordEnds(in: text) : Array(stride(from: 2, to: text.count, by: 2))
+                        let stepsPerBurst = isSpaced ? 3 : 4
+                        for (index, end) in steps.enumerated() {
+                            continuation.yield(.partial(String(text[..<end])))
+                            let endsBurst = index % stepsPerBurst == stepsPerBurst - 1
+                            try? await Task.sleep(for: .milliseconds(endsBurst ? 950 : 10))
+                            if Task.isCancelled { break }
+                        }
+                        // The speaker stops, and the sentence is final soon after.
+                        try? await Task.sleep(for: .milliseconds(400))
+                        continuation.yield(.final(sentence))
+                        try? await Task.sleep(for: .milliseconds(300))
                     }
-                    continuation.yield(.final(String(text)))
                     try? await Task.sleep(for: .milliseconds(2500))
                 }
                 continuation.finish()
@@ -155,27 +247,15 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
 
         func append(_ samples: [Int16]) {}
 
+        func speakerPaused() {}
+
         func stop() async {
             task?.cancel()
             task = nil
         }
 
-        /// The text so far. On every other burst, sentence endings older than the
-        /// newest words are left out, as the real recognizer does now and then.
-        private static func guess(_ text: [Character], upTo end: Int, burst: Int) -> String {
-            guard burst % 2 == 1 else { return String(text[..<end]) }
-            let endings: Set<Character> = ["。", "."]
-            var result = ""
-            for (index, character) in text[..<end].enumerated() where !(endings.contains(character) && index < end - 6) {
-                result.append(character)
-            }
-            return result
-        }
-
         private static func wordEnds(in text: [Character]) -> [Int] {
-            var ends = text.indices.filter { text[$0] == " " }
-            ends.append(text.count)
-            return ends
+            text.indices.filter { text[$0] == " " }
         }
     }
 #endif

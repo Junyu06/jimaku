@@ -15,6 +15,12 @@ public struct ChunkRules: Equatable, Sendable {
     /// rather than be cut just short of one.
     public var reach: Int { limit + limit / 4 }
 
+    /// A sentence that is known to be over is kept in one piece up to this many
+    /// columns, clause marks and all. The limit is there so that speech still
+    /// going on does not wait too long; a finished sentence has no wait, and
+    /// stays whole as long as its translation can be expected to fit two lines.
+    public var whole: Int { limit + limit / 2 }
+
     /// A comma cuts Japanese only after about two seconds of speech, and speech
     /// with no ending in sight is cut after about four.
     public static let japanese = ChunkRules(clauseMinimum: 24, limit: 48)
@@ -93,7 +99,11 @@ extension CaptionText {
 
             let mark = nextMarkedEnd(characters, from: start, rules: rules)
             let cut: Int
-            if let mark, width(characters[start..<mark]) <= rules.reach {
+            if isComplete, let end = sentenceEnd(characters, from: start),
+                width(characters[start..<end]) <= rules.whole
+            {
+                cut = end
+            } else if let mark, width(characters[start..<mark]) <= rules.reach {
                 // A marked end is near. If it is not stable yet, wait for it rather
                 // than cut just before it.
                 guard mark <= stableEnd else { break }
@@ -139,19 +149,32 @@ extension CaptionText {
         return index
     }
 
+    /// The index just past the sentence that starts at `start` in text that is
+    /// complete: past its ending mark, or the end of the text if it has none.
+    private static func sentenceEnd(_ characters: [Character], from start: Int) -> Int? {
+        guard start < characters.count else { return nil }
+        for index in start..<characters.count where endsSentence(characters, at: index) {
+            return endOfEnding(characters, at: index)
+        }
+        return characters.count
+    }
+
+    /// The index just past an ending mark at `index`, with the repeated ending
+    /// marks and closing quotes that belong to the same sentence.
+    private static func endOfEnding(_ characters: [Character], at index: Int) -> Int {
+        var end = index + 1
+        while end < characters.count, endings.contains(characters[end]) || closers.contains(characters[end]) {
+            end += 1
+        }
+        return end
+    }
+
     /// The index just past the first sentence ending or usable clause mark at or
     /// after `start`, wherever it is, stable or not.
     private static func nextMarkedEnd(_ characters: [Character], from start: Int, rules: ChunkRules) -> Int? {
         var index = start
         while index < characters.count {
-            if endsSentence(characters, at: index) {
-                // Keep repeated ending marks and closing quotes with the sentence.
-                var end = index + 1
-                while end < characters.count, endings.contains(characters[end]) || closers.contains(characters[end]) {
-                    end += 1
-                }
-                return end
-            }
+            if endsSentence(characters, at: index) { return endOfEnding(characters, at: index) }
             if endsClause(characters, at: index), width(characters[start..<index]) >= rules.clauseMinimum {
                 return index + 1
             }

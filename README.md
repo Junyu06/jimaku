@@ -1,6 +1,6 @@
 # Jimaku
 
-> **Status: first version written; an earlier build has run on a physical iPad.** On 2026-11-12 the owner ran it on an iPad with a Japanese video: audio capture, speech recognition, language-pack translation, and the floating window worked together. Three earlier builds ran there: the first fell behind continuous speech, the second kept up but rewrote its captions so much that they were hard to read, and the third held its captions still but showed a provisional translation that was read and then replaced. Captions are now translated one sentence at a time, when the sentence has ended, and do not change once shown. The current build has only been checked in an iPad simulator, where scripted input stands in for capture, recognition, and language-pack translation. Nothing has run on an iPhone. See `docs/cases/` for what was checked and how.
+> **Status: first version written; an earlier build has run on a physical iPad.** On 2026-11-12 the owner ran it on an iPad with a Japanese video: audio capture, speech recognition, language-pack translation, and the floating window worked together. Four earlier builds ran there: the first fell behind continuous speech, the second kept up but rewrote its captions so much that they were hard to read, the third held its captions still but showed a provisional translation that was read and then replaced, and the fourth translated whole sentences but told too late where one ended. A caption now ends where the speaker pauses; its translation appears then, on a line of its own, and does not change once shown. The current build has only been checked in an iPad simulator, where scripted input stands in for capture, recognition, and language-pack translation. Nothing has run on an iPhone. See `docs/cases/` for what was checked and how.
 
 Jimaku (字幕, Japanese for "subtitles") is a planned iPhone and iPad app for live translated captions over whatever is playing on the device.
 
@@ -39,7 +39,7 @@ Planned use:
 - Source languages: English and Japanese, chosen manually.
 - Target language: Simplified Chinese.
 - Two caption lines by default (original and translation), adjustable.
-- Speech is translated while it goes on, one sentence at a time, when the sentence has ended. A translation that has been shown is meant not to change or slide.
+- Speech is translated one thing said at a time: a caption ends where the speaker pauses or a sentence ends. A translation that has been shown is meant not to change or slide.
 - A switch between two translation engines: Translation framework language packs, and the on-device Apple Intelligence model.
 - A log of the current session's captions, readable in the app.
 - Closing the floating window ends the session, and also stops the screen broadcast if the system allows the app to do so.

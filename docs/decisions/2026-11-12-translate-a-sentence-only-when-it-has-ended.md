@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: accepted
+status: superseded in part by 2026-11-12-end-a-caption-where-the-speaker-pauses-by-asking-the-recognizer-to-finalize.md (how a pause is told; its rules remain the fallback)
 supersedes: the provisional translation and the piece sizes in 2026-11-12-keep-speech-in-pieces-that-never-change-once-kept.md, and the dimmer provisional translation in 2026-11-12-lay-captions-out-in-fixed-lines-that-roll-up.md
 
 # Translate a sentence only when it has ended
