@@ -29,10 +29,15 @@ public struct Transcript: Equatable, Sendable {
         public var original: String
         public var translation: String?
 
-        public init(id: Int, original: String, translation: String?) {
+        /// Which stretch of speech the sentence belongs to. A translation is only
+        /// ever delivered within the stretch it was made for.
+        public let stretch: Int
+
+        public init(id: Int, original: String, translation: String?, stretch: Int = 0) {
             self.id = id
             self.original = original
             self.translation = translation
+            self.stretch = stretch
         }
     }
 
@@ -60,6 +65,9 @@ public struct Transcript: Equatable, Sendable {
     /// Entries before this index belong to stretches that are final. The rest
     /// belong to the stretch in progress and still follow the recognizer.
     private var finalCount = 0
+
+    /// The number of the stretch in progress.
+    private var currentStretch = 0
 
     /// Translations received for sentences of the stretch in progress, by text.
     private var stretchTranslations: [String: String] = [:]
@@ -91,27 +99,33 @@ public struct Transcript: Equatable, Sendable {
         setTranslation(translation, for: entries[index])
     }
 
-    /// Delivers the translation of an entry as it was when handed out. If the
-    /// recognizer has rewritten that sentence since, the translation is dropped; if
-    /// the sentence only moved, the translation follows it.
+    /// Delivers the translation of an entry as it was when handed out. It goes to
+    /// every sentence with that text in the entry's own stretch, wherever a rewrite
+    /// may have moved it. If the stretch no longer has such a sentence, the
+    /// translation is dropped.
     public mutating func setTranslation(_ translation: String, for entry: Entry) {
         let text = translation.trimmed
         guard !text.isEmpty else { return }
-        if entry.id < finalCount {
-            // The stretch is final. Its sentences no longer change, but the one this
-            // translation is for may sit at a different index than when handed out.
-            let nearby = max(entry.id - 8, 0)..<min(entry.id + 9, finalCount)
-            let index =
-                entries[entry.id].original == entry.original
-                ? entry.id
-                : nearby.first { entries[$0].original == entry.original && entries[$0].translation == nil }
-            if let index { entries[index].translation = text }
-            return
+        var delivered = false
+        for index in entries.indices.reversed() {
+            if entries[index].stretch < entry.stretch { break }
+            if entries[index].stretch == entry.stretch, entries[index].original == entry.original {
+                entries[index].translation = text
+                delivered = true
+            }
         }
-        stretchTranslations[entry.original] = text
-        for index in finalCount..<entries.count where entries[index].original == entry.original {
-            entries[index].translation = text
+        // Remembered while the stretch is in progress, so the sentence keeps its
+        // translation through later guesses.
+        if delivered, entry.stretch == currentStretch {
+            stretchTranslations[entry.original] = text
         }
+    }
+
+    /// The translation of an entry failed. While its stretch is in progress, the
+    /// sentence is handed out again by the next update, so it can be retried.
+    public mutating func translationFailed(for entry: Entry) {
+        guard entry.stretch == currentStretch else { return }
+        handedOut.remove(entry.original)
     }
 
     /// Offers a provisional translation made from `source`. It is kept only if the
@@ -143,13 +157,26 @@ public struct Transcript: Equatable, Sendable {
     /// of sentences whose text did not change.
     private mutating func follow(_ sentences: [String], pending: String, isFinal: Bool) -> [Entry] {
         let previous = Array(entries[finalCount...])
+        let sentences = sentences.map(\.trimmed).filter { !$0.isEmpty }
+
+        // Forget what was known about sentences the recognizer no longer says. If
+        // one comes back, it is treated as new.
+        let present = Set(sentences)
+        stretchTranslations = stretchTranslations.filter { present.contains($0.key) }
+        handedOut.formIntersection(present)
+
         var updated: [Entry] = []
         var toTranslate: [Entry] = []
-        for sentence in sentences.map(\.trimmed) where !sentence.isEmpty {
+        for sentence in sentences {
             let offset = updated.count
             let unchanged = offset < previous.count && previous[offset].original == sentence
             let translation = (unchanged ? previous[offset].translation : nil) ?? stretchTranslations[sentence]
-            let entry = Entry(id: finalCount + offset, original: sentence, translation: translation)
+            let entry = Entry(
+                id: finalCount + offset,
+                original: sentence,
+                translation: translation,
+                stretch: currentStretch
+            )
             updated.append(entry)
             if translation == nil, handedOut.insert(sentence).inserted {
                 toTranslate.append(entry)
@@ -159,6 +186,7 @@ public struct Transcript: Equatable, Sendable {
         setPending(pending)
         if isFinal {
             finalCount = entries.count
+            currentStretch += 1
             stretchTranslations = [:]
             handedOut = []
         }

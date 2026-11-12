@@ -363,7 +363,10 @@ final class SessionController {
                 self.transcript.setTranslation(translation, for: entry)
             case (.pending(let text), .success(let translation)):
                 self.transcript.setPendingTranslation(translation, of: text)
-            case (_, .failure):
+            case (.entry(let entry), .failure):
+                // Let a later recognizer update hand this sentence out again.
+                self.transcript.translationFailed(for: entry)
+            case (.pending, .failure):
                 break
             }
             switch result {
