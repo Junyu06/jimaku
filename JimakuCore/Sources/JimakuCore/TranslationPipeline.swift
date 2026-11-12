@@ -17,7 +17,7 @@ public struct TranslationPipeline: Equatable, Sendable {
     public static let minimumPendingWidth = 4
 
     /// Speech in progress is translated again once it has grown by this many columns.
-    public static let minimumPendingGrowth = 4
+    public static let minimumPendingGrowth = 6
 
     public private(set) var readiness: CaptionPlaceholder.Readiness = .preparing
 

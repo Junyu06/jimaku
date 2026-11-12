@@ -118,35 +118,35 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
 }
 
 #if targetEnvironment(simulator)
-    /// The simulator has no system speech model, so this replays scripted text the
-    /// way a recognizer would: growing guesses, then a final version. Simulator only.
+    /// The simulator has no system speech model, so this replays a demo speech the
+    /// way the recognizer was seen to report continuous speech: guesses in bursts
+    /// about a second apart, ending marks in older text that come and go, and one
+    /// final result at the very end. Simulator only.
     @MainActor
     final class ScriptedSpeechRecognizer: SpeechRecognizing {
         private var task: Task<Void, Never>?
 
         func start(language: SourceLanguage) async throws -> AsyncThrowingStream<RecognitionUpdate, Error> {
             await stop()
-            let sentences = DemoCaptions.script.map(\.original)
+            let sentences = DemoCaptions.speech(in: language).map(\.original)
+            let isSpaced = sentences.contains { $0.contains(" ") }
+            let text = Array(sentences.joined(separator: isSpaced ? " " : ""))
+            // A burst adds about a second of speech, in a few guesses.
+            let steps: [Int] = isSpaced ? Self.wordEnds(in: text) : Array(stride(from: 2, through: text.count, by: 2)) + [text.count]
+            let stepsPerBurst = isSpaced ? 3 : 4
+
             let (updates, continuation) = AsyncThrowingStream<RecognitionUpdate, Error>.makeStream()
             task = Task {
-                // Like fast continuous speech on a device: one long stretch that keeps
-                // growing, finalized only after the whole script has been spoken.
                 while !Task.isCancelled {
-                    var spoken = ""
-                    for sentence in sentences {
-                        let pieces =
-                            sentence.contains(" ")
-                            ? sentence.split(separator: " ").map { String($0) + " " }
-                            : sentence.map(String.init)
-                        for piece in pieces {
-                            spoken += piece
-                            continuation.yield(.partial(spoken))
-                            try? await Task.sleep(for: .milliseconds(220))
-                        }
-                        if !spoken.hasSuffix(" ") { spoken += " " }
+                    for (index, end) in steps.enumerated() {
+                        let burst = index / stepsPerBurst
+                        continuation.yield(.partial(Self.guess(text, upTo: end, burst: burst)))
+                        let endsBurst = index % stepsPerBurst == stepsPerBurst - 1
+                        try? await Task.sleep(for: .milliseconds(endsBurst ? 950 : 10))
+                        if Task.isCancelled { break }
                     }
-                    continuation.yield(.final(spoken))
-                    try? await Task.sleep(for: .milliseconds(900))
+                    continuation.yield(.final(String(text)))
+                    try? await Task.sleep(for: .milliseconds(2500))
                 }
                 continuation.finish()
             }
@@ -158,6 +158,24 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         func stop() async {
             task?.cancel()
             task = nil
+        }
+
+        /// The text so far. On every other burst, sentence endings older than the
+        /// newest words are left out, as the real recognizer does now and then.
+        private static func guess(_ text: [Character], upTo end: Int, burst: Int) -> String {
+            guard burst % 2 == 1 else { return String(text[..<end]) }
+            let endings: Set<Character> = ["。", "."]
+            var result = ""
+            for (index, character) in text[..<end].enumerated() where !(endings.contains(character) && index < end - 6) {
+                result.append(character)
+            }
+            return result
+        }
+
+        private static func wordEnds(in text: [Character]) -> [Int] {
+            var ends = text.indices.filter { text[$0] == " " }
+            ends.append(text.count)
+            return ends
         }
     }
 #endif

@@ -16,7 +16,8 @@ Accepted requirements for the first version. The Status section at the end says 
 - Source language is chosen by the user: English or Japanese. No automatic detection.
 - Target language is Simplified Chinese.
 - The floating window shows two lines by default: the original line and the translated line. The user can switch to translation only.
-- A sentence is translated as soon as it ends, without waiting for the recognizer to finalize it. The unfinished end of the speech shows a provisional translation that updates as it grows. Both rows run on and show their end.
+- Speech is translated while it goes on, without waiting for the recognizer to finalize it: a piece of speech (a sentence, a clause, or about three seconds of words) is translated once it has stopped changing, and the unfinished end shows a provisional translation.
+- Caption text that has been shown as settled does not change and does not move sideways. Rows have fixed lines; when a row is full its lines move up by one. Text that may still change is dimmer. The few cases where this does not hold are listed in `docs/decisions/2026-11-12-lay-captions-out-in-fixed-lines-that-roll-up.md`.
 - The user can switch the translation engine between the Translation framework language packs and the on-device Apple Intelligence model.
 - The user can change the caption text size.
 - The app keeps a log of the captions of the current session, readable in the app. It is not kept after the app is closed.
@@ -43,6 +44,6 @@ Running reliably for a full hour is not part of this acceptance.
 
 All requirements are implemented. Each case under `docs/cases/` records what was checked.
 
-- On a physical iPad (2026-11-12, reported by the owner with screenshots): audio capture, speech recognition, language-pack translation, and the floating window worked together on a Japanese video, in the earlier version that translated only finalized speech. That run showed the translation falling behind continuous speech, which led to translating speech in progress.
-- In an iPad simulator: the floating window, translating speech in progress, text size, display mode, the session log, and Apple Intelligence translation.
-- Not yet run on a device: the current version, including the file-locked audio ring, the session lifecycle, and translation of speech in progress. Nothing has run on an iPhone.
+- On a physical iPad (2026-11-12, reported by the owner with screenshots): audio capture, speech recognition, language-pack translation, and the floating window worked together on Japanese videos, in two earlier versions. The first translated only finalized speech and fell behind continuous speech. The second translated speech in progress and kept up, but rewrote and slid its captions so much that they were hard to read. That led to keeping speech in pieces that do not change and to fixed lines that roll up.
+- In an iPad simulator: the floating window, captions in fixed lines, translating speech in progress, text size, display mode, the session log, and Apple Intelligence translation.
+- Not yet run on a device: the current version. Nothing has run on an iPhone.
