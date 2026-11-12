@@ -7,7 +7,7 @@ import SwiftUI
 struct StartView: View {
     @State private var controller = SessionController()
 
-    private var isRunning: Bool { controller.session.state == .running }
+    private var isRunning: Bool { controller.session.isActive }
 
     var body: some View {
         Form {
@@ -26,6 +26,7 @@ struct StartView: View {
                         .padding(.vertical, 6)
                 }
                 .buttonStyle(.borderedProminent)
+                .disabled(!controller.session.canPerformPrimaryAction)
                 .accessibilityIdentifier("primaryAction")
 
                 if isRunning, let hint = audioHint {

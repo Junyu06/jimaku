@@ -1,6 +1,7 @@
 import Foundation
 import JimakuCore
 import Observation
+import os
 
 /// Runs a caption session: floats the window, reads the audio the broadcast
 /// extension captured, sends it to speech recognition, translates what was said,
@@ -28,7 +29,7 @@ final class SessionController {
     var engine: TranslationEngine {
         didSet {
             UserDefaults.standard.set(engine.rawValue, forKey: Self.engineKey)
-            guard engine != oldValue, session.state == .running else { return }
+            guard engine != oldValue, session.isActive else { return }
             prepareTranslation()
         }
     }
@@ -60,6 +61,12 @@ final class SessionController {
     private var audioTask: Task<Void, Never>?
     private var recognitionTask: Task<Void, Never>?
     private var translationTask: Task<Void, Never>?
+    private var watchdogTask: Task<Void, Never>?
+    private let log = Logger(subsystem: "Jimaku", category: "session")
+
+    /// How long the caption window may take to appear or to close before the session
+    /// stops waiting for it.
+    private static let windowPatience: Duration = .seconds(5)
 
     init() {
         language =
@@ -83,6 +90,8 @@ final class SessionController {
     }
 
     func prepare() {
+        window.onStarted = { [weak self] in self?.windowDidStart() }
+        window.onFailedToStart = { [weak self] error in self?.windowFailedToStart(error) }
         window.onClosed = { [weak self] in self?.windowDidClose() }
         window.prepare()
         window.show(style: style)
@@ -92,37 +101,93 @@ final class SessionController {
     }
 
     func performPrimaryAction() {
-        switch session.primaryAction {
-        case .start: start()
-        case .stop: stop()
-        }
-    }
-
-    private func start() {
-        guard window.isSupported else {
+        if session.primaryAction == .start, session.canPerformPrimaryAction, !window.isSupported {
             notice = "这台设备不支持画中画，悬浮窗开不了。"
             return
         }
+        let action = session.performPrimaryAction()
+        trace("primary action: \(String(describing: action)), now \(String(describing: self.session.state))")
+        switch action {
+        case .start: begin()
+        case .stop: finish()
+        case nil: break
+        }
+    }
+
+    private func begin() {
         notice = nil
-        session.start()
         transcript.reset()
         refreshWindow()
-        window.float()
         startAudio()
         startRecognition()
         prepareTranslation()
+        window.float()
+        // If the window has not appeared after a while, give up instead of leaving
+        // the button on Stop with nothing on screen.
+        watch { controller in
+            guard controller.session.state == .starting else { return }
+            controller.session.windowFailedToStart()
+            controller.endSession()
+            controller.window.close()
+            controller.notice = "悬浮窗没能打开。请留在 Jimaku 里再点一次开始。"
+        }
     }
 
-    private func stop() {
-        session.stop()
+    private func finish() {
         endSession()
         window.close()
+        // If the system never reports the window closed, stop waiting for it.
+        watch { controller in
+            guard controller.session.state == .stopping else { return }
+            controller.session.windowDidClose()
+        }
+    }
+
+    private func windowDidStart() {
+        session.windowDidStart()
+        trace("window started, now \(String(describing: self.session.state))")
+    }
+
+    private func windowFailedToStart(_ error: Error) {
+        let wasActive = session.isActive
+        trace("window failed to start: \(error.localizedDescription)")
+        session.windowFailedToStart()
+        guard wasActive else { return }
+        endSession()
+        notice = "悬浮窗没能打开：\(error.localizedDescription)"
     }
 
     private func windowDidClose() {
-        guard session.state == .running else { return }
-        session.stop()
-        endSession()
+        let previous = session.state
+        trace("window closed while \(String(describing: previous))")
+        session.windowDidClose()
+        switch previous {
+        case .starting:
+            // The window went away before it ever appeared, which happens when a
+            // start follows a stop too closely. Say so instead of ending silently.
+            endSession()
+            notice = "悬浮窗没能打开，请再点一次开始。"
+        case .running:
+            // The user or the system closed the window while the session was running.
+            endSession()
+        case .idle, .stopping:
+            break
+        }
+    }
+
+    /// Records a lifecycle event in the system log, to diagnose a session on a device.
+    private func trace(_ message: String) {
+        log.info("\(message, privacy: .public)")
+    }
+
+    /// Runs `check` once after `windowPatience`, replacing any earlier pending check.
+    private func watch(_ check: @escaping @MainActor (SessionController) -> Void) {
+        watchdogTask?.cancel()
+        watchdogTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.windowPatience)
+            guard !Task.isCancelled, let self else { return }
+            check(self)
+        }
     }
 
     private func endSession() {
@@ -215,10 +280,10 @@ final class SessionController {
             guard let self else { return }
             do {
                 try await self.translator.prepare(from: language)
-                guard self.session.state == .running, self.engine == engine else { return }
+                guard self.session.isActive, self.engine == engine else { return }
                 self.isTranslatorReady = true
             } catch {
-                guard self.session.state == .running, self.engine == engine else { return }
+                guard self.session.isActive, self.engine == engine else { return }
                 self.notice = error.localizedDescription
             }
         }
@@ -257,7 +322,7 @@ final class SessionController {
     /// for when there are none yet.
     private func refreshWindow() {
         // Outside a session the window keeps its preview caption.
-        guard session.state == .running else { return }
+        guard session.isActive else { return }
         let lines = transcript.currentLines
         if lines.rows(in: style.mode).isEmpty {
             // The waiting line goes in the translation slot so it shows in both display modes.

@@ -12,8 +12,14 @@ final class CaptionWindow: NSObject {
     /// The layer that shows captions inside the app. The floating window mirrors it.
     let displayLayer = AVSampleBufferDisplayLayer()
 
-    /// Called when the floating window is gone, whether the user closed it, the
-    /// system stopped it, or it failed to start.
+    /// Called when the floating window has appeared.
+    var onStarted: (() -> Void)?
+
+    /// Called when the floating window could not appear, with the reason.
+    var onFailedToStart: ((Error) -> Void)?
+
+    /// Called when the floating window is gone, whether the app closed it, the user
+    /// did, or the system did.
     var onClosed: (() -> Void)?
 
     var isSupported: Bool { AVPictureInPictureController.isPictureInPictureSupported() }
@@ -27,16 +33,18 @@ final class CaptionWindow: NSObject {
     private var style = CaptionStyle()
     private var wantsToFloat = false
 
-    /// Sets up the audio session and the Picture in Picture controller. Safe to call
-    /// more than once.
+    /// Sets up the Picture in Picture controller. Safe to call more than once.
     func prepare() {
         guard controller == nil else { return }
 
         // Picture in Picture needs a playback audio session. Mixing with others keeps
-        // the app being watched audible.
-        let audioSession = AVAudioSession.sharedInstance()
-        try? audioSession.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
-        try? audioSession.setActive(true)
+        // the app being watched audible. The session is only activated while the
+        // window floats.
+        try? AVAudioSession.sharedInstance().setCategory(
+            .playback,
+            mode: .moviePlayback,
+            options: [.mixWithOthers]
+        )
 
         displayLayer.videoGravity = .resizeAspect
         render()
@@ -78,13 +86,25 @@ final class CaptionWindow: NSObject {
     /// Asks the system to float the window. If the system is not ready yet, the
     /// window floats as soon as it is.
     func float() {
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            onFailedToStart?(error)
+            return
+        }
         wantsToFloat = true
         startIfWanted()
     }
 
+    /// Closes the window. `onClosed` follows: at once if the window never appeared,
+    /// otherwise when the system has finished closing it.
     func close() {
         wantsToFloat = false
-        controller?.stopPictureInPicture()
+        if let controller, controller.isPictureInPictureActive {
+            controller.stopPictureInPicture()
+        } else {
+            didClose()
+        }
     }
 
     private func startIfWanted() {
@@ -105,11 +125,21 @@ final class CaptionWindow: NSObject {
 
     private func didClose() {
         wantsToFloat = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
         onClosed?()
     }
 }
 
 extension CaptionWindow: @preconcurrency AVPictureInPictureControllerDelegate {
+    func pictureInPictureControllerDidStartPictureInPicture(_ controller: AVPictureInPictureController) {
+        // The window can appear after it was asked to close; close it again.
+        guard wantsToFloat else {
+            controller.stopPictureInPicture()
+            return
+        }
+        onStarted?()
+    }
+
     func pictureInPictureControllerDidStopPictureInPicture(_ controller: AVPictureInPictureController) {
         didClose()
     }
@@ -118,7 +148,9 @@ extension CaptionWindow: @preconcurrency AVPictureInPictureControllerDelegate {
         _ controller: AVPictureInPictureController,
         failedToStartPictureInPictureWithError error: Error
     ) {
-        didClose()
+        wantsToFloat = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: [.notifyOthersOnDeactivation])
+        onFailedToStart?(error)
     }
 }
 
