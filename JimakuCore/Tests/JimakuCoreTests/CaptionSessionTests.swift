@@ -36,7 +36,7 @@ struct CaptionSessionTests {
     @Test("Requesting a start waits for the window before running")
     func requestStartWaitsForWindow() {
         var session = CaptionSession()
-        #expect(session.requestStart())
+        do { let result = session.requestStart(); #expect(result) }
         #expect(session.state == .starting)
         #expect(session.isActive)
         #expect(session.primaryAction == .stop)
@@ -63,10 +63,10 @@ struct CaptionSessionTests {
     @Test("A second start request while starting or running is refused")
     func duplicateStartIsRefused() {
         var starting = session(in: .starting)
-        #expect(starting.requestStart() == false)
+        do { let result = starting.requestStart(); #expect(result == false) }
         #expect(starting.state == .starting)
         var running = session(in: .running)
-        #expect(running.requestStart() == false)
+        do { let result = running.requestStart(); #expect(result == false) }
         #expect(running.state == .running)
     }
 
@@ -75,7 +75,7 @@ struct CaptionSessionTests {
     @Test("Requesting a stop waits for the window to close")
     func requestStopWaitsForWindow() {
         var session = session(in: .running)
-        #expect(session.requestStop())
+        do { let result = session.requestStop(); #expect(result) }
         #expect(session.state == .stopping)
         #expect(session.isActive == false)
     }
@@ -85,8 +85,8 @@ struct CaptionSessionTests {
         var session = session(in: .stopping)
         #expect(session.primaryAction == .start)
         #expect(session.canPerformPrimaryAction == false)
-        #expect(session.requestStart() == false)
-        #expect(session.performPrimaryAction() == nil)
+        do { let result = session.requestStart(); #expect(result == false) }
+        do { let result = session.performPrimaryAction(); #expect(result == nil) }
         #expect(session.state == .stopping)
     }
 
@@ -101,7 +101,7 @@ struct CaptionSessionTests {
     @Test("A stop can be requested while the window is still starting")
     func stopWhileStarting() {
         var session = session(in: .starting)
-        #expect(session.requestStop())
+        do { let result = session.requestStop(); #expect(result) }
         #expect(session.state == .stopping)
     }
 
@@ -124,7 +124,7 @@ struct CaptionSessionTests {
     @Test("Stopping an idle session is refused")
     func stopWhenIdleIsRefused() {
         var session = CaptionSession()
-        #expect(session.requestStop() == false)
+        do { let result = session.requestStop(); #expect(result == false) }
         #expect(session.state == .idle)
     }
 
@@ -167,12 +167,12 @@ struct CaptionSessionTests {
         var session = session(in: .running)
         session.requestStop()
         // The user taps Start again before the old window has finished closing.
-        #expect(session.requestStart() == false)
+        do { let result = session.requestStart(); #expect(result == false) }
         // The old window finishes closing.
         session.windowDidClose()
         #expect(session.state == .idle)
         // Now a new session can begin, and no stale close is left to end it.
-        #expect(session.requestStart())
+        do { let result = session.requestStart(); #expect(result) }
         session.windowDidStart()
         #expect(session.state == .running)
     }
@@ -182,9 +182,9 @@ struct CaptionSessionTests {
     @Test("Performing the primary action starts an idle session and stops an active one")
     func performPrimaryAction() {
         var session = CaptionSession()
-        #expect(session.performPrimaryAction() == .start)
+        do { let result = session.performPrimaryAction(); #expect(result == .start) }
         #expect(session.state == .starting)
-        #expect(session.performPrimaryAction() == .stop)
+        do { let result = session.performPrimaryAction(); #expect(result == .stop) }
         #expect(session.state == .stopping)
     }
 }
