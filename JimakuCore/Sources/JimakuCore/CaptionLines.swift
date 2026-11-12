@@ -51,7 +51,8 @@ public struct CaptionRow: Equatable, Sendable {
 }
 
 extension String {
-    fileprivate var trimmed: String {
+    /// The string without leading and trailing whitespace and newlines.
+    var trimmed: String {
         var view = self[...]
         while let first = view.first, first.isWhitespace { view = view.dropFirst() }
         while let last = view.last, last.isWhitespace { view = view.dropLast() }
