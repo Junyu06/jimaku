@@ -1,0 +1,10 @@
+// Neutral defaults. They are enough to build and run in the simulator.
+//
+// To run on a device, create JimakuApp/Signing.xcconfig.local (gitignored)
+// with your own DEVELOPMENT_TEAM and JIMAKU_BUNDLE_PREFIX, then run
+// `xcodegen generate` again. Never put those values in this file.
+
+DEVELOPMENT_TEAM =
+JIMAKU_BUNDLE_PREFIX = com.example
+
+#include? "Signing.xcconfig.local"

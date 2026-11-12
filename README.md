@@ -1,6 +1,6 @@
 # Jimaku
 
-> **Status: not built yet.** This repository holds the plan only. Nothing described here has been implemented or tested on a device. This note is updated as each step is verified on real hardware.
+> **Status: early skeleton.** An empty app shell builds and runs in the iOS simulator: one screen with a Start button that does nothing yet. Audio capture, speech recognition, translation, and the floating caption window are not implemented, and nothing has been tested on a physical device. This note is updated as each step is verified on real hardware.
 
 Jimaku (字幕, Japanese for "subtitles") is a planned iPhone and iPad app for live translated captions over whatever is playing on the device.
 
@@ -72,6 +72,14 @@ To be answered by running on real devices:
 - Speech recognition and translation language assets downloaded on the device.
 - The Apple Intelligence translation option needs a device that supports Apple Intelligence.
 
+## Build and run
+
+See [docs/workflows/run-locally.md](docs/workflows/run-locally.md).
+
 ## For contributors and coding agents
 
 Read [AGENTS.md](AGENTS.md) first, then [docs/README.md](docs/README.md).
+
+## License
+
+[MIT](LICENSE)

@@ -33,3 +33,6 @@ AGENTS.local.md
 *.provisionprofile
 ExportOptions.plist
 Secrets.xcconfig
+
+# Generated Xcode project (run `xcodegen generate`)
+*.xcodeproj/
