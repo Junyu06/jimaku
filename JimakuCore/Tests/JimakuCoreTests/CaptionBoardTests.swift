@@ -6,8 +6,8 @@ struct CaptionLayoutTests {
     @Test("By default the original gets one small line above two lines of translation")
     func defaults() {
         let layout = CaptionLayout(style: CaptionStyle())
-        #expect(layout.original == CaptionLayout.Row(columns: 72, lines: 1, role: .secondary))
-        #expect(layout.translation == CaptionLayout.Row(columns: 50, lines: 2, role: .primary))
+        #expect(layout.original == CaptionLayout.Row(columns: 66, lines: 1, role: .secondary))
+        #expect(layout.translation == CaptionLayout.Row(columns: 46, lines: 2, role: .primary))
     }
 
     @Test("A larger text size means fewer columns on a line")
@@ -15,11 +15,11 @@ struct CaptionLayoutTests {
         let columns = CaptionStyle.TextSize.allCases.map {
             CaptionLayout(style: CaptionStyle(textSize: $0)).translation?.columns ?? 0
         }
-        #expect(columns == [60, 50, 40])
+        #expect(columns == [54, 46, 40])
         let original = CaptionStyle.TextSize.allCases.map {
             CaptionLayout(style: CaptionStyle(textSize: $0)).original?.columns ?? 0
         }
-        #expect(original == [84, 72, 60])
+        #expect(original == [76, 66, 60])
     }
 
     @Test("Rows start with estimated widths and can be given measured ones")
@@ -37,7 +37,7 @@ struct CaptionLayoutTests {
     func translationOnly() {
         let layout = CaptionLayout(style: CaptionStyle(mode: .translationOnly))
         #expect(layout.original == nil)
-        #expect(layout.translation == CaptionLayout.Row(columns: 50, lines: 2, role: .primary))
+        #expect(layout.translation == CaptionLayout.Row(columns: 46, lines: 2, role: .primary))
     }
 
     @Test("The translation gets as many lines as the style asks for, and the original keeps one")
@@ -62,7 +62,7 @@ struct CaptionLayoutTests {
     @Test("When translation cannot run, the original gets the lines the style asks for")
     func chosenLinesWithoutTranslation() {
         let layout = CaptionLayout(style: CaptionStyle(lines: 3), translationAvailable: false)
-        #expect(layout.original == CaptionLayout.Row(columns: 50, lines: 3, role: .primary))
+        #expect(layout.original == CaptionLayout.Row(columns: 46, lines: 3, role: .primary))
     }
 
     @Test("A style has two to five lines, two unless told otherwise")
@@ -81,7 +81,7 @@ struct CaptionLayoutTests {
         for mode in CaptionStyle.Mode.allCases {
             let layout = CaptionLayout(style: CaptionStyle(mode: mode), translationAvailable: false)
             #expect(layout.translation == nil)
-            #expect(layout.original == CaptionLayout.Row(columns: 50, lines: 2, role: .primary))
+            #expect(layout.original == CaptionLayout.Row(columns: 46, lines: 2, role: .primary))
         }
     }
 }
