@@ -24,6 +24,8 @@ Cost accepted:
 
 - Now and then the recognizer answers after the pause is already certain: 3 times in 228 seconds on the iPad. In the build that session ran, what was held was then one caption and the late answer another. The rules above for answers that come late were added afterwards; a second session ran with an earlier form of them, and their present form has not run on a device.
 - After a knock or another sound the recognizer has no words for, a caption that was being held comes 0.3 seconds later than it would have.
+- The wait for an owed answer cannot tell a knock from speech the recognizer has not reported a guess for yet. If the second part of a sentence is answered more than 0.3 seconds after its pause was certain, and no guess for it came before, the first part has already ended as a caption and the second is another.
+- Answers that come so late that the recognizer has been asked about the next sentence in the meantime, more than about a second, are taken as sentences of their own even where two of them were parts of one.
 - A sentence finalized in two parts is recognized as two parts, each without the other as context, though it is translated as one.
 - Translations started for a first part that the speaker then went on from are wasted work, and one that is still running delays the next by its remainder.
 - While speech is held it shows on the original row as speech in progress, dimmer, a fraction of a second longer than before.

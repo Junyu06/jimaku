@@ -151,6 +151,17 @@ struct HeldSpeechTests {
         #expect(held.text.isEmpty)
     }
 
+    @Test("An answer that comes after the wait is over is a piece of its own: the known cost of not waiting for ever")
+    func answerAfterTheWait() {
+        var held = HeldSpeech()
+        held.asked(at: 1.2)
+        _ = held.take(.final("I think."), endingAt: 1.1)
+        held.asked(at: 1.62)
+        #expect(held.confirm(at: 1.72) == nil)
+        #expect(held.overdue(at: 2.02) == .final("I think."))
+        #expect(held.take(.final("we should go."), endingAt: 1.52) == .final("we should go."))
+    }
+
     @Test("Nothing is overdue when nothing was held or no pause was certain")
     func nothingOverdue() {
         var held = HeldSpeech()
