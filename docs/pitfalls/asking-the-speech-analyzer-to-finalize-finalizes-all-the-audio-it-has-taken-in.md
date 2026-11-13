@@ -10,4 +10,4 @@ What worked, for every pause in the same batches: hand over the audio up to the 
 
 - **Even `finalize(through: nil)` does not always return without more audio.** It usually returned within 0.05 seconds. In one run, with audio fed a tenth of a second at a time, a request made after a stretch in which nothing had been recognized did not return; the audio after it was being held back for it, so nothing more was recognized for the remaining two minutes. Holding audio back for a request therefore needs a time limit.
 
-None of this was measured on an iPhone or iPad.
+On a physical iPad the volatile range behaves differently while audio arrives through a screen broadcast: it stops about a tenth of a second short of the audio handed over. See `during-a-broadcast-the-speech-analyzers-volatile-range-stops-short-of-the-audio-handed-over.md`. The other measurements above were not repeated on an iPhone or iPad.
