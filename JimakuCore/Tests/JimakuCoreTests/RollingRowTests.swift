@@ -422,36 +422,19 @@ struct RollingRowTests {
     // MARK: Paging with texts that follow one another
 
     private func flowing(columns: Int = 10, lines: Int) -> RollingRow {
-        RollingRow(columns: columns, lines: lines, pages: true, gap: true, tentativeWraps: false)
+        RollingRow(columns: columns, lines: lines, pages: true, tentativeWraps: false)
     }
 
-    @Test("Texts that follow one another on a line have a gap as wide as a wide character between them")
-    func gapBetweenTexts() {
+    @Test("Texts follow one another on a line with nothing between them, or a space between narrow letters")
+    func textsRunOn() {
         var row = flowing(lines: 2)
-        row.append("一")
+        row.append("一。")
         row.append("二")
-        #expect(texts(row) == ["一\u{3000}二"])
-        var narrow = RollingRow(columns: 20, lines: 2, pages: true, gap: true, tentativeWraps: false)
+        #expect(texts(row) == ["一。二"])
+        var narrow = flowing(columns: 20, lines: 2)
         narrow.append("Hi.")
         narrow.append("Bye.")
-        #expect(texts(narrow) == ["Hi.  Bye."])
-    }
-
-    @Test("After a wide mark, which has blank space of its own, the gap is one narrow space")
-    func gapAfterAWideMark() {
-        var row = flowing(columns: 20, lines: 2)
-        row.append("一。")
-        row.append("二？")
-        row.append("三")
-        #expect(texts(row) == ["一。 二？ 三"])
-    }
-
-    @Test("A gap is not kept where a line ends")
-    func noGapAtALineEnd() {
-        var row = flowing(lines: 2)
-        row.append("一二三四")
-        row.append("五六")
-        #expect(texts(row) == ["一二三四", "五六"])
+        #expect(texts(narrow) == ["Hi. Bye."])
     }
 
     @Test("A flowing text that fits in what is left of the page runs on from the line being filled")
@@ -459,7 +442,7 @@ struct RollingRowTests {
         var row = flowing(lines: 2)
         row.append("一二")
         row.append("三四五六")
-        #expect(texts(row) == ["一二\u{3000}三四", "五六"])
+        #expect(texts(row) == ["一二三四五", "六"])
         #expect(!row.hasMore)
     }
 
@@ -472,7 +455,7 @@ struct RollingRowTests {
         #expect(texts(row) == ["甲乙丙丁"])
         #expect(!row.hasMore)
         row.append("戊")
-        #expect(texts(row) == ["甲乙丙丁", "戊"])
+        #expect(texts(row) == ["甲乙丙丁戊"])
     }
 
     @Test("A flowing text longer than a page starts a page of its own and is shown a page at a time")
@@ -485,7 +468,7 @@ struct RollingRowTests {
         row.showMore()
         #expect(texts(row) == ["甲乙丙"])
         row.append("丁")
-        #expect(texts(row) == ["甲乙丙\u{3000}丁"])
+        #expect(texts(row) == ["甲乙丙丁"])
         #expect(!row.hasMore)
     }
 
@@ -496,17 +479,45 @@ struct RollingRowTests {
         row.setTentative("…")
         #expect(row.visible == [CaptionLine(settled: "一二", tentative: "…")])
         row.append("三四五")
-        #expect(texts(row) == ["一二\u{3000}三四", "五…"])
-        row.append("六七八九十")
-        #expect(texts(row) == ["六七八九十"])
+        #expect(texts(row) == ["一二三四五"])
+        row.append("六")
+        #expect(row.visible == [CaptionLine(settled: "一二三四五"), CaptionLine(settled: "六", tentative: "…")])
     }
 
-    @Test("A flowing row that rolls instead of paging is as it was: no gap unless asked for")
-    func flowingWithoutGap() {
-        var row = RollingRow(columns: 10, lines: 2)
-        row.append("一")
-        row.append("二")
-        #expect(texts(row) == ["一二"])
+    @Test("Several flowing texts added at once go where they would have gone one by one")
+    func flowingTextsAtOnce() {
+        var one = flowing(lines: 2)
+        ["一二三", "四五六", "七八九", "十甲乙"].forEach { one.append($0) }
+        var all = flowing(lines: 2)
+        all.update(appending: ["一二三", "四五六", "七八九", "十甲乙"], tentative: "")
+        #expect(texts(one) == ["十甲乙"])
+        #expect(texts(all) == texts(one))
+        #expect(!all.hasMore)
+    }
+
+    @Test("Flowing pages turned, a mark taken back, text added, and pages turned again keep the row in step")
+    func flowingPagesAndMarks() {
+        var row = flowing(columns: 4, lines: 2)
+        row.append("一二三四五六七八九十")
+        row.setTentative("…")
+        #expect(texts(row) == ["一二", "三四"])
+        row.showMore()
+        #expect(texts(row) == ["五六", "七八"])
+        row.setTentative("")
+        row.showMore()
+        #expect(texts(row) == ["九十"])
+        #expect(!row.hasMore)
+        // What follows runs on where the long text ended.
+        row.append("甲")
+        #expect(texts(row) == ["九十", "甲"])
+        // A short text arrives while a long one still has pages to show: the
+        // page where the long one ends is shown, with the short one after it.
+        row.append("乙丙丁戊己庚")
+        #expect(texts(row) == ["乙丙", "丁戊"])
+        #expect(row.hasMore)
+        row.update(appending: ["辛"], tentative: "…")
+        #expect(texts(row) == ["己庚", "辛…"])
+        #expect(!row.hasMore)
     }
 
     @Test("Pages turned, text added, a mark taken back, and pages turned again keep the row in step")

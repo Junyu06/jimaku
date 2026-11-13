@@ -130,7 +130,7 @@ struct CaptionBoardTests {
         #expect(board.rows[0].lines == [CaptionLine(settled: "", tentative: "How are")])
     }
 
-    @Test("On the original row each sentence starts a new line; translations follow one another with a gap")
+    @Test("On the original row each sentence starts a new line; translations follow one another")
     func sentencesApartAndFlowing() {
         let roomy = CaptionLayout(
             original: CaptionLayout.Row(columns: 20, lines: 2, role: .secondary),
@@ -139,7 +139,7 @@ struct CaptionBoardTests {
         var board = CaptionBoard(layout: roomy)
         board.show(said([("Hello.", "你好。"), ("Bye.", "再见。")]))
         #expect(texts(board.rows[0]) == ["Hello.", "Bye."])
-        #expect(texts(board.rows[1]) == ["你好。 再见。"])
+        #expect(texts(board.rows[1]) == ["你好。再见。"])
     }
 
     @Test("A translation longer than its row is shown from its beginning, then the rest")
@@ -165,13 +165,15 @@ struct CaptionBoardTests {
             board.show(transcript)
         }
         add("Two.", "二。", at: 1)
-        #expect(texts(board.rows[1]) == ["一。 二。"])
+        #expect(texts(board.rows[1]) == ["一。二。"])
         add("Three.", "三。", at: 2)
-        #expect(texts(board.rows[1]) == ["一。 二。", "三。"])
         add("Four.", "四。", at: 3)
-        #expect(texts(board.rows[1]) == ["一。 二。", "三。 四。"])
+        #expect(texts(board.rows[1]) == ["一。二。三。", "四。"])
         add("Five.", "五。", at: 4)
-        #expect(texts(board.rows[1]) == ["五。"])
+        add("Six.", "六。", at: 5)
+        #expect(texts(board.rows[1]) == ["一。二。三。", "四。五。六。"])
+        add("Seven.", "七。", at: 6)
+        #expect(texts(board.rows[1]) == ["七。"])
         #expect(!board.hasMore)
     }
 
@@ -362,7 +364,7 @@ struct CaptionBoardTests {
         board.relay(wide, showing: transcript)
         #expect(board.rows.map(\.role) == [.primary])
         // "Fine" is still waiting to be translated.
-        let expected = [CaptionLine(settled: "你好。 你好吗？", tentative: "…")]
+        let expected = [CaptionLine(settled: "你好。你好吗？", tentative: "…")]
         #expect(board.rows[0].lines == expected)
         // Nothing is added twice afterwards.
         board.show(transcript)
