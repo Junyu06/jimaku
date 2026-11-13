@@ -6,8 +6,8 @@ struct CaptionLayoutTests {
     @Test("By default the original gets one small line above two lines of translation")
     func defaults() {
         let layout = CaptionLayout(style: CaptionStyle())
-        #expect(layout.original == CaptionLayout.Row(columns: 46, lines: 1, role: .secondary))
-        #expect(layout.translation == CaptionLayout.Row(columns: 24, lines: 2, role: .primary))
+        #expect(layout.original == CaptionLayout.Row(columns: 66, lines: 1, role: .secondary))
+        #expect(layout.translation == CaptionLayout.Row(columns: 46, lines: 2, role: .primary))
     }
 
     @Test("A larger text size means fewer columns on a line")
@@ -15,11 +15,11 @@ struct CaptionLayoutTests {
         let columns = CaptionStyle.TextSize.allCases.map {
             CaptionLayout(style: CaptionStyle(textSize: $0)).translation?.columns ?? 0
         }
-        #expect(columns == [30, 24, 22])
+        #expect(columns == [54, 46, 40])
         let original = CaptionStyle.TextSize.allCases.map {
             CaptionLayout(style: CaptionStyle(textSize: $0)).original?.columns ?? 0
         }
-        #expect(original == [52, 46, 42])
+        #expect(original == [76, 66, 60])
     }
 
     @Test("Rows start with estimated widths and can be given measured ones")
@@ -37,12 +37,12 @@ struct CaptionLayoutTests {
     func translationOnly() {
         let layout = CaptionLayout(style: CaptionStyle(mode: .translationOnly))
         #expect(layout.original == nil)
-        #expect(layout.translation == CaptionLayout.Row(columns: 24, lines: 2, role: .primary))
+        #expect(layout.translation == CaptionLayout.Row(columns: 46, lines: 2, role: .primary))
     }
 
     @Test("The translation gets as many lines as the style asks for, and the original keeps one")
     func chosenLines() {
-        for lines in [2, 3, 4] {
+        for lines in [2, 3, 4, 5] {
             for size in CaptionStyle.TextSize.allCases {
                 let layout = CaptionLayout(style: CaptionStyle(textSize: size, lines: lines))
                 #expect(layout.translation?.lines == lines)
@@ -62,18 +62,18 @@ struct CaptionLayoutTests {
     @Test("When translation cannot run, the original gets the lines the style asks for")
     func chosenLinesWithoutTranslation() {
         let layout = CaptionLayout(style: CaptionStyle(lines: 3), translationAvailable: false)
-        #expect(layout.original == CaptionLayout.Row(columns: 24, lines: 3, role: .primary))
+        #expect(layout.original == CaptionLayout.Row(columns: 46, lines: 3, role: .primary))
     }
 
-    @Test("A style has two to four lines, two unless told otherwise")
+    @Test("A style has two to five lines, two unless told otherwise")
     func linesOfAStyle() {
         #expect(CaptionStyle().lines == 2)
-        #expect(CaptionStyle.lineChoices == [2, 3, 4])
+        #expect(CaptionStyle.lineChoices == [2, 3, 4, 5])
         #expect(CaptionStyle(lines: 1).lines == 2)
-        #expect(CaptionStyle(lines: 9).lines == 4)
+        #expect(CaptionStyle(lines: 9).lines == 5)
         var style = CaptionStyle()
         style.lines = 7
-        #expect(style.lines == 4)
+        #expect(style.lines == 5)
     }
 
     @Test("When translation cannot run, the original takes the main row in either mode")
@@ -81,7 +81,7 @@ struct CaptionLayoutTests {
         for mode in CaptionStyle.Mode.allCases {
             let layout = CaptionLayout(style: CaptionStyle(mode: mode), translationAvailable: false)
             #expect(layout.translation == nil)
-            #expect(layout.original == CaptionLayout.Row(columns: 24, lines: 2, role: .primary))
+            #expect(layout.original == CaptionLayout.Row(columns: 46, lines: 2, role: .primary))
         }
     }
 }
@@ -355,20 +355,23 @@ struct CaptionBoardTests {
 
     @Test("A translation too long for two lines needs no second page with four, and needs one again with two")
     func longTranslationAcrossLineCounts() {
-        // Three lines of twelve wide characters at the medium size.
+        func rows(_ lines: Int) -> CaptionLayout {
+            CaptionLayout(original: nil, translation: CaptionLayout.Row(columns: 24, lines: lines, role: .primary))
+        }
+        // Three lines of twelve wide characters.
         let long = String(repeating: "甲", count: 30)
         let transcript = said([("Long.", long)])
-        var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
+        var board = CaptionBoard(layout: rows(2))
         board.show(transcript)
         #expect(board.hasMore)
         var page = board.page
-        board.relay(CaptionLayout(style: CaptionStyle(lines: 4)), showing: transcript)
-        #expect(texts(board.rows[1]).joined() == long)
+        board.relay(rows(4), showing: transcript)
+        #expect(texts(board.rows[0]).joined() == long)
         #expect(!board.hasMore)
         #expect(board.page > page)
         page = board.page
-        board.relay(CaptionLayout(style: CaptionStyle(lines: 2)), showing: transcript)
-        #expect(texts(board.rows[1]).joined() == String(long.prefix(24)))
+        board.relay(rows(2), showing: transcript)
+        #expect(texts(board.rows[0]).joined() == String(long.prefix(24)))
         #expect(board.hasMore)
         #expect(board.page > page)
     }

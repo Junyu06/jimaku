@@ -13,5 +13,7 @@ status: simulated
 
 - 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0: choosing 大 during a session enlarged the text in the floating window; after reopening the app 大 was still selected; choosing 只显示中文 left only the Chinese line in the preview. 小 was not exercised. Simulator only.
 - 2026-11-12, same simulator, after captions moved to fixed lines: 大 during a session gave eleven Chinese characters on a line instead of twelve, and both rows still fit the window. 小 and 只显示中文 were not exercised again. Simulator only.
-- Physical iPad: not run.
+- The three sizes were made smaller after these runs (twenty-seven, twenty-three, or twenty Chinese characters to a line).
+- 2026-11-12, physical iPad: the owner changed the size during sessions and reported on how each looked, at 40, 30, and 24 columns (all too large) and at 60, 50, and 40 (large kept, small and medium a little too small). The display mode and reopening the app were not reported. No screenshot kept.
+- Physical iPad, the present small and medium sizes: not run.
 - Physical iPhone: not run.

@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: accepted
+status: superseded in part by 2026-11-12-allow-a-fifth-line-of-translation.md: the choice goes up to five. The frame heights named below were for the text sizes of the time; see 2026-11-12-make-the-caption-text-smaller-and-give-it-more-room.md.
 supersedes: the number of lines of the translation row in 2026-11-12-lay-captions-out-in-fixed-lines-that-roll-up.md: "two lines", and "a third line at the small size" when the translation is alone. The 1200 by 400 frame there is now the smallest frame.
 
 # Let the reader choose how many lines the translation has

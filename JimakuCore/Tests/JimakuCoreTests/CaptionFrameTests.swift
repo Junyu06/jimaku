@@ -45,14 +45,33 @@ struct CaptionFrameTests {
         }
     }
 
-    @Test("More lines of translation make the frame taller, with the text the same size")
+    @Test("More lines of translation make the frame taller once they no longer fit, with the text the same size")
     func moreLines() {
-        // Small text: a line of translation is 90.8 pixels high and the original line 52.4.
-        let small = { (lines: Int) in CaptionFrame.height(for: CaptionLayout(style: CaptionStyle(textSize: .small, lines: lines))) }
-        #expect(small(3) == 404)
-        #expect(small(4) == 494)
-        let medium = { (lines: Int) in CaptionFrame.height(for: CaptionLayout(style: CaptionStyle(lines: lines))) }
-        #expect(medium(3) == 478)
-        #expect(abs(CaptionFrame.fontSize(columns: 24) - 94.56) < 0.01)
+        let height = { (size: CaptionStyle.TextSize, lines: Int) in
+            CaptionFrame.height(for: CaptionLayout(style: CaptionStyle(textSize: size, lines: lines)))
+        }
+        // Small text: a line of translation is 57.2 pixels high and the original line 40.6.
+        #expect(height(.small, 4) == 400)
+        #expect(height(.small, 5) == 438)
+        // Medium: 67.2 and 46.8.
+        #expect(height(.medium, 3) == 400)
+        #expect(height(.medium, 5) == 494)
+        // Large: 77.2 and 51.5.
+        #expect(height(.large, 4) == 472)
+        #expect(height(.large, 5) == 548)
+    }
+
+    @Test("At the small size twenty-seven Chinese characters fit a line of translation")
+    func smallText() {
+        let row = CaptionLayout(style: CaptionStyle(textSize: .small)).translation
+        #expect(row?.columns == 54)
+        #expect(abs(CaptionFrame.fontSize(columns: 54) - 40.86) < 0.01)
+    }
+
+    @Test("Text has room around it: forty pixels at each edge, and lines set at 1.4 times the text size")
+    func room() {
+        #expect(CaptionFrame.padding == 40)
+        #expect(CaptionFrame.textWidth == 1120)
+        #expect(CaptionFrame.leading == 1.4)
     }
 }
