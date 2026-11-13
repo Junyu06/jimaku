@@ -40,10 +40,40 @@ struct CaptionLayoutTests {
         #expect(layout.translation == CaptionLayout.Row(columns: 24, lines: 2, role: .primary))
     }
 
-    @Test("Small text leaves room for a third line of translation when it is alone")
-    func smallTranslationOnly() {
-        let layout = CaptionLayout(style: CaptionStyle(textSize: .small, mode: .translationOnly))
-        #expect(layout.translation?.lines == 3)
+    @Test("The translation gets as many lines as the style asks for, and the original keeps one")
+    func chosenLines() {
+        for lines in [2, 3, 4] {
+            for size in CaptionStyle.TextSize.allCases {
+                let layout = CaptionLayout(style: CaptionStyle(textSize: size, lines: lines))
+                #expect(layout.translation?.lines == lines)
+                #expect(layout.original?.lines == 1)
+            }
+        }
+    }
+
+    @Test("Alone, the translation has the lines the style asks for, at the small size as well")
+    func chosenLinesAlone() {
+        #expect(CaptionLayout(style: CaptionStyle(textSize: .small, mode: .translationOnly)).translation?.lines == 2)
+        #expect(
+            CaptionLayout(style: CaptionStyle(textSize: .small, mode: .translationOnly, lines: 4)).translation?.lines
+                == 4)
+    }
+
+    @Test("When translation cannot run, the original gets the lines the style asks for")
+    func chosenLinesWithoutTranslation() {
+        let layout = CaptionLayout(style: CaptionStyle(lines: 3), translationAvailable: false)
+        #expect(layout.original == CaptionLayout.Row(columns: 24, lines: 3, role: .primary))
+    }
+
+    @Test("A style has two to four lines, two unless told otherwise")
+    func linesOfAStyle() {
+        #expect(CaptionStyle().lines == 2)
+        #expect(CaptionStyle.lineChoices == [2, 3, 4])
+        #expect(CaptionStyle(lines: 1).lines == 2)
+        #expect(CaptionStyle(lines: 9).lines == 4)
+        var style = CaptionStyle()
+        style.lines = 7
+        #expect(style.lines == 4)
     }
 
     @Test("When translation cannot run, the original takes the main row in either mode")
