@@ -85,13 +85,16 @@ public struct CaptionLayout: Equatable, Sendable {
     }
 }
 
-/// What the caption window shows for a transcript: each row filling line by line
-/// and rolling up. The original row ends with the speech in progress as tentative
-/// text. The translation row shows finished translations only; while speech is
-/// waiting to be translated it ends with a waiting mark, if there is room.
+/// What the caption window shows for a transcript. The original row fills line
+/// by line and rolls up; it ends with the speech in progress as tentative text.
+/// The translation row shows finished translations only and fills like a page:
+/// when the next translation does not fit in what is left, a new page begins
+/// with it. While speech is waiting to be translated the row ends with a
+/// waiting mark, if there is room.
 ///
-/// Every sentence starts on a new line. A translation longer than its row is
-/// shown from its beginning; `showMore()` moves on to the rest.
+/// On the original row every sentence starts on a new line. Translations follow
+/// one another like the sentences of a paragraph. A translation longer than a
+/// whole page is shown from its beginning; `showMore()` turns to the rest.
 ///
 /// The board only ever adds to what it shows. A translation that arrives after a
 /// later one is already on the row is left out of the window; putting it in the
@@ -114,8 +117,10 @@ public struct CaptionBoard: Equatable, Sendable {
     /// translated.
     public static let waitingMark = "…"
 
-    /// How many recent entries are laid out again when the layout changes.
-    private static let recall = 4
+    /// How many recent entries are laid out again when the layout changes. A
+    /// page of running text can hold more than this; the rest is not brought
+    /// back.
+    private static let recall = CaptionStyle.lineChoices.max() ?? 2
 
     public init(layout: CaptionLayout) {
         self.layout = layout
@@ -124,9 +129,7 @@ public struct CaptionBoard: Equatable, Sendable {
         }
         // The waiting mark never gets a line of its own.
         translationRow = layout.translation.map {
-            RollingRow(
-                columns: $0.columns, lines: $0.lines, textsApart: true, pages: true, tentativeWraps: false,
-                widths: $0.widths)
+            RollingRow(columns: $0.columns, lines: $0.lines, pages: true, tentativeWraps: false, widths: $0.widths)
         }
     }
 
@@ -160,6 +163,12 @@ public struct CaptionBoard: Equatable, Sendable {
     /// Whether the newest translation is longer than its row and the rest of it
     /// has not been shown yet.
     public var hasMore: Bool { translationRow?.hasMore ?? false }
+
+    /// How long a page of the translation row should stay before `showMore()`
+    /// turns it, in seconds: a second and a quarter for each line it has.
+    public var pageTime: Double {
+        1.25 * Double((layout.translation ?? layout.original)?.lines ?? 2)
+    }
 
     /// Shows the next lines of a translation that is longer than its row. Whoever
     /// owns the board calls this once the reader has had time for the lines shown.
