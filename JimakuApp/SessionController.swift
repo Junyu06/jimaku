@@ -53,9 +53,14 @@ final class SessionController {
 
     let window = CaptionWindow()
 
-    /// The pixel size of the caption picture for the current style. The preview
+    /// The pixel size of the caption picture the window is showing. The preview
     /// takes its shape from it.
-    var frameSize: CGSize { CaptionFrameRenderer.frameSize(height: CaptionFrame.height(for: layout)) }
+    var frameSize: CGSize { CaptionFrameRenderer.frameSize(height: frameHeight) }
+
+    /// The height of the frame last given to the window. It is set only where
+    /// the window is shown something, so the preview never has another shape
+    /// than the picture in it.
+    private var frameHeight = CaptionFrame.minimumHeight
 
     private static let languageKey = "sourceLanguage"
     private static let engineKey = "translationEngine"
@@ -447,6 +452,7 @@ final class SessionController {
     private func refreshWindow() {
         let layout = layout
         let frameHeight = CaptionFrame.height(for: layout)
+        if frameHeight != self.frameHeight { self.frameHeight = frameHeight }
         guard session.isActive else {
             window.show(.rows(CaptionBoard.rows(for: DemoCaptions.lines(at: 0), layout: layout)), frameHeight: frameHeight)
             return

@@ -339,6 +339,40 @@ struct CaptionBoardTests {
         #expect(board.rows[0].lines == expected)
     }
 
+    @Test("With more lines the row shows more of the recent sentences, and with fewer again only the newest")
+    func moreAndFewerLines() {
+        let transcript = said([("One.", "一。"), ("Two.", "二。"), ("Three.", "三。"), ("Four.", "四。")])
+        var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
+        board.show(transcript)
+        #expect(texts(board.rows[1]) == ["三。", "四。"])
+        board.relay(CaptionLayout(style: CaptionStyle(lines: 4)), showing: transcript)
+        #expect(texts(board.rows[1]) == ["一。", "二。", "三。", "四。"])
+        #expect(!board.hasMore)
+        board.relay(CaptionLayout(style: CaptionStyle(lines: 2)), showing: transcript)
+        #expect(texts(board.rows[1]) == ["三。", "四。"])
+        #expect(!board.hasMore)
+    }
+
+    @Test("A translation too long for two lines needs no second page with four, and needs one again with two")
+    func longTranslationAcrossLineCounts() {
+        // Three lines of twelve wide characters at the medium size.
+        let long = String(repeating: "甲", count: 30)
+        let transcript = said([("Long.", long)])
+        var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
+        board.show(transcript)
+        #expect(board.hasMore)
+        var page = board.page
+        board.relay(CaptionLayout(style: CaptionStyle(lines: 4)), showing: transcript)
+        #expect(texts(board.rows[1]).joined() == long)
+        #expect(!board.hasMore)
+        #expect(board.page > page)
+        page = board.page
+        board.relay(CaptionLayout(style: CaptionStyle(lines: 2)), showing: transcript)
+        #expect(texts(board.rows[1]).joined() == String(long.prefix(24)))
+        #expect(board.hasMore)
+        #expect(board.page > page)
+    }
+
     @Test("A board with only the original row shows it as the main row")
     func originalOnly() {
         let alone = CaptionLayout(original: CaptionLayout.Row(columns: 24, lines: 2, role: .primary), translation: nil)
