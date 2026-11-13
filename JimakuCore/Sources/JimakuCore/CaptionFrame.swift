@@ -9,7 +9,7 @@ public enum CaptionFrame {
     public static let minimumHeight = 400.0
 
     /// Space left clear along each edge.
-    public static let padding = 24.0
+    public static let padding = 40.0
     /// Space between two rows, and between the rows and the meter.
     public static let rowSpacing = 10.0
     /// The height of the audio meter along the bottom. Its space is set aside
@@ -19,7 +19,7 @@ public enum CaptionFrame {
     /// at the end of a full line.
     public static let fill = 0.985
     /// Line height as a multiple of the font size.
-    public static let leading = 1.2
+    public static let leading = 1.4
 
     /// The width captions are drawn in.
     public static var textWidth: Double { width - padding * 2 }

@@ -6,7 +6,7 @@ status: simulated
 # More lines of translation make the caption window taller
 
 - Input: on a device, choose 中文行数 (lines of Chinese) 2 to 5, at each text size, before and during a session with continuous speech. Close and reopen the app.
-- Expected result: the floating window shows that many lines of translation under the one line of original, with the text the same size as before; the window is taller once the lines no longer fit its lowest shape (at the small size, with five lines). During a session the window changes shape at once and goes on showing captions. The choice is still set after reopening the app.
+- Expected result: the floating window shows that many lines of translation under the one line of original, with the text the same size as before; the window is taller once the lines no longer fit its lowest shape (at the small size only with five lines, and then by little). During a session the window changes shape at once and goes on showing captions. The choice is still set after reopening the app.
 - Property: how many captions stay in view is the reader's choice, separate from how large the text is.
 
 ## Evidence
