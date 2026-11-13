@@ -18,4 +18,4 @@ Cost accepted:
 - An app that uses it may be refused by App Store review. This app is installed from source and is not distributed through the store.
 - While the two remaining buttons are up, the system still dims the window.
 
-Status of evidence: in an iPad simulator (iOS 27.0) the window showed only the close and return buttons where it had shown the full controls before. Not run on a physical device.
+Status of evidence: in an iPad simulator (iOS 27.0) the window showed only the close and return buttons where it had shown the full controls before. The owner then used it on a physical iPad and reported the window as good; whether the two buttons fade there was not reported.

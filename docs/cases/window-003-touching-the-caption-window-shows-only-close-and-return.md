@@ -12,5 +12,5 @@ status: simulated
 ## Evidence
 
 - 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0: as the window appeared, the system showed the close and return buttons only. Before this change the same moment showed skip back, stop, skip forward, a LIVE badge, and a progress bar; with `requiresLinearPlayback` alone they were all still there. The two buttons were not pressed. Simulator only.
-- Physical iPad: not run.
+- 2026-11-12, physical iPad: the owner used builds with this change over a short-video app and reported the window as good. Whether the two buttons fade, and what pressing them did, was not reported. No screenshot kept.
 - Physical iPhone: not run.
