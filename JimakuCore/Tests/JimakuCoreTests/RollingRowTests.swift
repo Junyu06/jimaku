@@ -419,6 +419,87 @@ struct RollingRowTests {
         #expect(texts(row) == ["第99", "末"])
     }
 
+    // MARK: Paging with texts that follow one another
+
+    private func flowing(columns: Int = 10, lines: Int) -> RollingRow {
+        RollingRow(columns: columns, lines: lines, pages: true, gap: true, tentativeWraps: false)
+    }
+
+    @Test("Texts that follow one another on a line have a gap as wide as a wide character between them")
+    func gapBetweenTexts() {
+        var row = flowing(lines: 2)
+        row.append("一")
+        row.append("二")
+        #expect(texts(row) == ["一\u{3000}二"])
+        var narrow = RollingRow(columns: 20, lines: 2, pages: true, gap: true, tentativeWraps: false)
+        narrow.append("Hi.")
+        narrow.append("Bye.")
+        #expect(texts(narrow) == ["Hi.  Bye."])
+    }
+
+    @Test("A gap is not kept where a line ends")
+    func noGapAtALineEnd() {
+        var row = flowing(lines: 2)
+        row.append("一二三四")
+        row.append("五六")
+        #expect(texts(row) == ["一二三四", "五六"])
+    }
+
+    @Test("A flowing text that fits in what is left of the page runs on from the line being filled")
+    func flowingTextFits() {
+        var row = flowing(lines: 2)
+        row.append("一二")
+        row.append("三四五六")
+        #expect(texts(row) == ["一二\u{3000}三四", "五六"])
+        #expect(!row.hasMore)
+    }
+
+    @Test("A flowing text that does not fit in what is left of the page starts a new page at the top")
+    func flowingTextStartsANewPage() {
+        var row = flowing(lines: 2)
+        row.append("一二三四五六七")
+        #expect(texts(row) == ["一二三四五", "六七"])
+        row.append("甲乙丙丁")
+        #expect(texts(row) == ["甲乙丙丁"])
+        #expect(!row.hasMore)
+        row.append("戊")
+        #expect(texts(row) == ["甲乙丙丁", "戊"])
+    }
+
+    @Test("A flowing text longer than a page starts a page of its own and is shown a page at a time")
+    func flowingLongText() {
+        var row = flowing(lines: 2)
+        row.append("一")
+        row.append("一二三四五六七八九十甲乙丙")
+        #expect(texts(row) == ["一二三四五", "六七八九十"])
+        #expect(row.hasMore)
+        row.showMore()
+        #expect(texts(row) == ["甲乙丙"])
+        row.append("丁")
+        #expect(texts(row) == ["甲乙丙\u{3000}丁"])
+        #expect(!row.hasMore)
+    }
+
+    @Test("A mark goes after the last flowing text when it fits on the line, and is left out when it does not")
+    func flowingMark() {
+        var row = flowing(lines: 2)
+        row.append("一二")
+        row.setTentative("…")
+        #expect(row.visible == [CaptionLine(settled: "一二", tentative: "…")])
+        row.append("三四五")
+        #expect(texts(row) == ["一二\u{3000}三四", "五…"])
+        row.append("六七八九")
+        #expect(texts(row) == ["六七八九"])
+    }
+
+    @Test("A flowing row that rolls instead of paging is as it was: no gap unless asked for")
+    func flowingWithoutGap() {
+        var row = RollingRow(columns: 10, lines: 2)
+        row.append("一")
+        row.append("二")
+        #expect(texts(row) == ["一二"])
+    }
+
     @Test("Pages turned, text added, a mark taken back, and pages turned again keep the row in step")
     func pagesAndMarks() {
         var row = paged(columns: 4, lines: 2)

@@ -130,16 +130,16 @@ struct CaptionBoardTests {
         #expect(board.rows[0].lines == [CaptionLine(settled: "", tentative: "How are")])
     }
 
-    @Test("Each sentence starts on a new line, on both rows")
-    func sentencesApart() {
+    @Test("On the original row each sentence starts a new line; translations follow one another with a gap")
+    func sentencesApartAndFlowing() {
         let roomy = CaptionLayout(
             original: CaptionLayout.Row(columns: 20, lines: 2, role: .secondary),
-            translation: CaptionLayout.Row(columns: 12, lines: 2, role: .primary)
+            translation: CaptionLayout.Row(columns: 20, lines: 2, role: .primary)
         )
         var board = CaptionBoard(layout: roomy)
         board.show(said([("Hello.", "你好。"), ("Bye.", "再见。")]))
         #expect(texts(board.rows[0]) == ["Hello.", "Bye."])
-        #expect(texts(board.rows[1]) == ["你好。", "再见。"])
+        #expect(texts(board.rows[1]) == ["你好。\u{3000}再见。"])
     }
 
     @Test("A translation longer than its row is shown from its beginning, then the rest")
@@ -165,11 +165,13 @@ struct CaptionBoardTests {
             board.show(transcript)
         }
         add("Two.", "二。", at: 1)
-        #expect(texts(board.rows[1]) == ["一。", "二。"])
+        #expect(texts(board.rows[1]) == ["一。\u{3000}二。"])
         add("Three.", "三。", at: 2)
-        #expect(texts(board.rows[1]) == ["三。"])
+        #expect(texts(board.rows[1]) == ["一。\u{3000}二。", "三。"])
         add("Four.", "四。", at: 3)
-        #expect(texts(board.rows[1]) == ["三。", "四。"])
+        #expect(texts(board.rows[1]) == ["一。\u{3000}二。", "三。\u{3000}四。"])
+        add("Five.", "五。", at: 4)
+        #expect(texts(board.rows[1]) == ["五。"])
         #expect(!board.hasMore)
     }
 
@@ -360,7 +362,7 @@ struct CaptionBoardTests {
         board.relay(wide, showing: transcript)
         #expect(board.rows.map(\.role) == [.primary])
         // "Fine" is still waiting to be translated.
-        let expected = [CaptionLine(settled: "你好。"), CaptionLine(settled: "你好吗？", tentative: "…")]
+        let expected = [CaptionLine(settled: "你好。\u{3000}你好吗？", tentative: "…")]
         #expect(board.rows[0].lines == expected)
         // Nothing is added twice afterwards.
         board.show(transcript)
@@ -369,26 +371,33 @@ struct CaptionBoardTests {
 
     @Test("With more lines the row shows more of the recent sentences, and with fewer again only the newest")
     func moreAndFewerLines() {
+        // A row so narrow that each of these fills a line.
+        func rows(_ lines: Int) -> CaptionLayout {
+            CaptionLayout(original: nil, translation: CaptionLayout.Row(columns: 4, lines: lines, role: .primary))
+        }
         let transcript = said([("One.", "一。"), ("Two.", "二。"), ("Three.", "三。"), ("Four.", "四。")])
-        var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
+        var board = CaptionBoard(layout: rows(2))
         board.show(transcript)
-        #expect(texts(board.rows[1]) == ["三。", "四。"])
-        board.relay(CaptionLayout(style: CaptionStyle(lines: 4)), showing: transcript)
-        #expect(texts(board.rows[1]) == ["一。", "二。", "三。", "四。"])
+        #expect(texts(board.rows[0]) == ["三。", "四。"])
+        board.relay(rows(4), showing: transcript)
+        #expect(texts(board.rows[0]) == ["一。", "二。", "三。", "四。"])
         #expect(!board.hasMore)
-        board.relay(CaptionLayout(style: CaptionStyle(lines: 2)), showing: transcript)
-        #expect(texts(board.rows[1]) == ["三。", "四。"])
+        board.relay(rows(2), showing: transcript)
+        #expect(texts(board.rows[0]) == ["三。", "四。"])
         #expect(!board.hasMore)
     }
 
     @Test("Laid out again, a row of five lines gets five recent sentences")
     func fiveLinesRecalled() {
+        func rows(_ columns: Int) -> CaptionLayout {
+            CaptionLayout(original: nil, translation: CaptionLayout.Row(columns: columns, lines: 5, role: .primary))
+        }
         let transcript = said([("One.", "一。"), ("Two.", "二。"), ("Three.", "三。"), ("Four.", "四。"), ("Five.", "五。")])
-        var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle(textSize: .small, lines: 5)))
+        var board = CaptionBoard(layout: rows(4))
         board.show(transcript)
-        #expect(texts(board.rows[1]) == ["一。", "二。", "三。", "四。", "五。"])
-        board.relay(CaptionLayout(style: CaptionStyle(lines: 5)), showing: transcript)
-        #expect(texts(board.rows[1]) == ["一。", "二。", "三。", "四。", "五。"])
+        #expect(texts(board.rows[0]) == ["一。", "二。", "三。", "四。", "五。"])
+        board.relay(rows(5), showing: transcript)
+        #expect(texts(board.rows[0]) == ["一。", "二。", "三。", "四。", "五。"])
         #expect(!board.hasMore)
     }
 
