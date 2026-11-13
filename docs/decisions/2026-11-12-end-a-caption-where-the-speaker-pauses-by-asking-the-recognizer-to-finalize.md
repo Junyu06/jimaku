@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: accepted
+status: superseded in part by 2026-11-12-ask-the-recognizer-on-a-short-quiet-and-hold-its-answer-until-the-pause-is-certain.md: the recognizer is asked earlier, on a possible pause, and its final result is no longer the caption at once: it is held until the pause is certain and may be joined with what follows.
 supersedes: telling a pause from the recognizer's guesses as the usual way a piece ends, in 2026-11-12-translate-a-sentence-only-when-it-has-ended.md. Its rules stay as the fallback for audio that never goes quiet.
 
 # End a caption where the speaker pauses, by asking the recognizer to finalize
