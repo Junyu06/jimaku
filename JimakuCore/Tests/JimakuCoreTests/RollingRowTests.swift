@@ -519,6 +519,13 @@ struct RollingRowTests {
         row.append("a")
         #expect(texts(row) == ["a"])
         #expect(!row.hasMore)
+
+        // A hair wider, and the second no longer fits: by estimate it would.
+        let wider = GlyphWidths(narrow: ["a": 1.5 + 1.0 / 1024, " ": 1])
+        var tight = RollingRow(columns: 4, lines: 1, pages: true, tentativeWraps: false, widths: wider)
+        tight.append("a")
+        tight.append("a")
+        #expect(texts(tight) == ["a"])
     }
 
     @Test("Flowing pages turned, a mark taken back, text added, and pages turned again keep the row in step")
