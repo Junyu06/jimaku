@@ -10,11 +10,8 @@ public enum CaptionFrame {
 
     /// Space left clear along each edge.
     public static let padding = 40.0
-    /// Space between two rows, and between the rows and the meter.
+    /// Space between two rows.
     public static let rowSpacing = 10.0
-    /// The height of the audio meter along the bottom. Its space is set aside
-    /// whether or not it is drawn.
-    public static let meterHeight = 10.0
     /// The share of the nominal size the font is drawn at, leaving a little slack
     /// at the end of a full line.
     public static let fill = 0.985
@@ -40,13 +37,13 @@ public enum CaptionFrame {
 
     /// How much of a frame's height is left for rows.
     public static func rowsArea(inFrameOfHeight height: Double) -> Double {
-        height - padding * 2 - meterHeight - rowSpacing
+        height - padding * 2
     }
 
     /// The height of the frame for `layout`: `minimumHeight`, or as much more as
     /// its rows need, to the next even pixel.
     public static func height(for layout: CaptionLayout) -> Double {
-        let needed = rowsHeight(for: layout) + padding * 2 + meterHeight + rowSpacing
+        let needed = rowsHeight(for: layout) + padding * 2
         return max(minimumHeight, (needed / 2).rounded(.up) * 2)
     }
 }

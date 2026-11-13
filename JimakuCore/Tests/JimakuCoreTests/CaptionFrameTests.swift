@@ -52,13 +52,13 @@ struct CaptionFrameTests {
         }
         // Small text: a line of translation is 57.2 pixels high and the original line 40.6.
         #expect(height(.small, 4) == 400)
-        #expect(height(.small, 5) == 438)
+        #expect(height(.small, 5) == 418)
         // Medium: 67.2 and 46.8.
         #expect(height(.medium, 3) == 400)
-        #expect(height(.medium, 5) == 494)
+        #expect(height(.medium, 5) == 474)
         // Large: 77.2 and 51.5.
-        #expect(height(.large, 4) == 472)
-        #expect(height(.large, 5) == 548)
+        #expect(height(.large, 4) == 452)
+        #expect(height(.large, 5) == 528)
     }
 
     @Test("At the small size twenty-seven Chinese characters fit a line of translation")
@@ -73,5 +73,10 @@ struct CaptionFrameTests {
         #expect(CaptionFrame.padding == 40)
         #expect(CaptionFrame.textWidth == 1120)
         #expect(CaptionFrame.leading == 1.4)
+    }
+
+    @Test("Nothing but the rows and the room around them takes height")
+    func onlyRows() {
+        #expect(CaptionFrame.rowsArea(inFrameOfHeight: 400) == 320)
     }
 }

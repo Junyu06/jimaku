@@ -255,14 +255,13 @@ final class SessionController {
         #if targetEnvironment(simulator)
             audio.endSimulatedBroadcast()
         #endif
-        window.show(audioLevel: nil)
         audioStatus = audio.status
     }
 
     // MARK: Audio
 
-    /// Reads the shared ring ten times a second, shows the level, and passes the
-    /// samples on to speech recognition.
+    /// Reads the shared ring ten times a second and passes the samples on to
+    /// speech recognition.
     private func startAudio(for token: Generation.Token) {
         audioTask?.cancel()
         audioTask = Task { [weak self] in
@@ -279,8 +278,6 @@ final class SessionController {
                     self.audioStatus = status
                     self.refreshWindow()
                 }
-                let hasAudio = status == .receiving || status == .stalled
-                self.window.show(audioLevel: hasAudio ? AudioLevel.meter(for: samples) : nil)
                 if self.recognition == .ready {
                     // When the speaker stops, the recognizer is asked to settle
                     // on the sentence now. That is what ends most captions. It

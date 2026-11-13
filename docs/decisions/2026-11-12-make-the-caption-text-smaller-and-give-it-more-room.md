@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: superseded in part by 2026-11-12-set-the-small-and-medium-text-a-little-larger.md: the small and medium sizes. The large size and the room around the text stand.
+status: superseded in part by 2026-11-12-set-the-small-and-medium-text-a-little-larger.md: the small and medium sizes. The large size and the room around the text stand. The frame height named below was lowered by 2026-11-12-take-the-audio-meter-out-of-the-caption-window.md.
 supersedes: 2026-11-12-make-the-caption-text-smaller-at-every-size.md, which had gone to 40, 30, and 24 columns. With it, the columns by text size in 2026-11-12-lay-captions-out-in-fixed-lines-that-roll-up.md.
 
 # Make the caption text smaller and give it more room
