@@ -86,6 +86,12 @@ final class SessionController {
     private var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
     /// Listens for the speaker stopping, so the recognizer can be told at once.
     private var pauses = PauseDetector(sampleRate: AudioRing.sampleRate)
+    /// Speech the recognizer finalized on a short quiet, until the quiet has
+    /// lasted long enough to be sure the speaker stopped.
+    private var held = HeldSpeech()
+    /// Translations by the text they translate, so that one started ahead of
+    /// time for speech that is being held is there when its caption is kept.
+    private let translations = TranslationsAhead()
     /// When to show the rest of a translation that is longer than its row, as a
     /// time since the device started. Nil when nothing is waiting.
     private var pageDue: Double?
@@ -161,6 +167,8 @@ final class SessionController {
         pipeline.reset()
         board = CaptionBoard(layout: layout)
         pauses = PauseDetector(sampleRate: AudioRing.sampleRate)
+        held = HeldSpeech()
+        translations.reset()
         pageDue = nil
         pageSeen = board.page
         recognition = .preparing
@@ -235,6 +243,7 @@ final class SessionController {
         translatorGeneration.invalidate()
         translatorToken = nil
         translator = nil
+        translations.reset()
         pipeline.reset()
         recognition = .preparing
 
@@ -260,12 +269,13 @@ final class SessionController {
 
     // MARK: Audio
 
-    /// Reads the shared ring ten times a second and passes the samples on to
-    /// speech recognition.
+    /// Reads the shared ring some thirty times a second and passes the samples on
+    /// to speech recognition. How often it looks is part of how soon a pause is
+    /// noticed.
     private func startAudio(for token: Generation.Token) {
         audioTask?.cancel()
         audioTask = Task { [weak self] in
-            let interval = 0.1
+            let interval = 0.03
             var elapsed = 0.0
             while !Task.isCancelled {
                 guard let self, self.sessionGeneration.isCurrent(token) else { return }
@@ -279,17 +289,30 @@ final class SessionController {
                     self.refreshWindow()
                 }
                 if self.recognition == .ready {
-                    // When the speaker stops, the recognizer is asked to settle
-                    // on the sentence now. That is what ends most captions. It
-                    // is told between the samples before the pause and those
-                    // after it.
+                    // On a short quiet the recognizer is asked to settle on what
+                    // was said, between the samples before the quiet and those
+                    // after it, so the words and their translation are ready
+                    // early. They become a caption when the quiet has lasted
+                    // long enough to be sure the speaker stopped. That is what
+                    // ends most captions.
                     var handed = 0
-                    for place in self.pauses.take(samples) {
-                        self.recognizer.append(Array(samples[handed..<place]))
-                        self.recognizer.speakerPaused()
-                        handed = place
+                    for pause in self.pauses.events(in: samples) {
+                        self.recognizer.append(Array(samples[handed..<pause.place]))
+                        handed = pause.place
+                        // The recognizer's own clock, which the ends of its
+                        // results are on.
+                        let time = self.recognizer.audioTime
+                        if pause.isCertain {
+                            if let update = self.held.confirm(at: time) { self.take(update) }
+                        } else {
+                            self.recognizer.speakerPaused()
+                            self.held.asked(at: time)
+                        }
                     }
                     self.recognizer.append(Array(samples[handed...]))
+                    // An answer the recognizer owed has not come: what was
+                    // held ends without it.
+                    if let update = self.held.overdue(at: self.recognizer.audioTime) { self.take(update) }
                     // Audio that never goes quiet gives no such pause, so a guess
                     // that stops changing ends a caption as well.
                     let kept = self.transcript.elapse(to: ProcessInfo.processInfo.systemUptime)
@@ -321,13 +344,11 @@ final class SessionController {
                 guard self.sessionGeneration.isCurrent(token) else { return }
                 self.recognition = .ready
                 self.refreshWindow()
-                for try await update in updates {
+                for try await heard in updates {
                     guard self.sessionGeneration.isCurrent(token) else { return }
-                    for kept in self.transcript.apply(update, at: ProcessInfo.processInfo.systemUptime) {
-                        self.pipeline.settle(kept)
-                    }
-                    self.pump()
-                    self.refreshWindow()
+                    let update = self.held.take(heard.update, endingAt: heard.end)
+                    if case .final = heard.update, case .partial = update { self.translateAhead() }
+                    self.take(update)
                 }
                 // The recognizer stopped on its own while the session is still running.
                 guard self.sessionGeneration.isCurrent(token) else { return }
@@ -343,6 +364,26 @@ final class SessionController {
         }
     }
 
+    /// Gives the transcript an update and passes on what it keeps.
+    private func take(_ update: RecognitionUpdate) {
+        for kept in transcript.apply(update, at: ProcessInfo.processInfo.systemUptime) {
+            pipeline.settle(kept)
+        }
+        pump()
+        refreshWindow()
+    }
+
+    /// Starts translating what is being held, as the pieces it will be kept in
+    /// if the speaker has stopped. If they go on instead, these translations
+    /// are not used.
+    private func translateAhead() {
+        guard let translator, !held.text.isEmpty else { return }
+        var ahead = transcript
+        for piece in ahead.apply(.final(held.text), at: ProcessInfo.processInfo.systemUptime) {
+            _ = translations.translation(of: piece.original) { try await translator.translate($0) }
+        }
+    }
+
     // MARK: Translation
 
     /// Gets a translator for the current engine and language. If that fails, the
@@ -351,6 +392,7 @@ final class SessionController {
         let token = translatorGeneration.advance()
         translatorToken = token
         translator = nil
+        translations.reset()
         translationNotice = nil
         pipeline.setReadiness(.preparing)
         refreshWindow()
@@ -384,13 +426,12 @@ final class SessionController {
     /// Sends the next kept piece of speech to the translator, if one is waiting.
     private func pump() {
         guard let translator, let token = translatorToken, let entry = pipeline.takeNext() else { return }
+        // Asked for here and not inside the task, so that a task which starts
+        // after the translator has changed cannot put the old translator's
+        // work among the new one's.
+        let translation = translations.translation(of: entry.original) { try await translator.translate($0) }
         Task { [weak self] in
-            let result: Result<String, Error>
-            do {
-                result = .success(try await translator.translate(entry.original))
-            } catch {
-                result = .failure(error)
-            }
+            let result = await translation.result
             // The engine changed or the session ended while this was being translated.
             guard let self, self.translatorGeneration.isCurrent(token) else { return }
             switch result {
