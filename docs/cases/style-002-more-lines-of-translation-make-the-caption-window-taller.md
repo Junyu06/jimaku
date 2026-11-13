@@ -13,5 +13,6 @@ status: simulated
 
 - 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0, scripted Japanese, small text, 4 lines set before launch: the preview and the floating window were taller than before and showed one line of original above four lines of translation, each sentence on its own line. Choosing 2 during the session brought the floating window back to its earlier shape with two lines of translation. 3 lines, the other text sizes, and reopening the app were not exercised. Simulator only.
 - The text sizes were made smaller and a fifth line was added after that run; the heights changed with them.
-- Physical iPad: not run.
+- 2026-11-12, physical iPad: the owner used the choice of two to five lines during sessions over a short-video app, at text sizes of 40, 30, and 24 columns and then 60, 50, and 40, and reported the lines as fine, five being the choice they would usually keep. Reopening the app and each size with each number of lines were not reported. No screenshot kept.
+- Physical iPad, the present small and medium sizes: not run.
 - Physical iPhone: not run.
