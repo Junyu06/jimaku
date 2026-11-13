@@ -58,6 +58,13 @@ final class CaptionWindow: NSObject {
         )
         let controller = AVPictureInPictureController(contentSource: source)
         controller.delegate = self
+        // Captions have nothing to play, pause, or skip, so the window should not
+        // offer it. The public API only disables skipping. This setting is not
+        // documented: 1 leaves the close and return buttons and drops the rest.
+        // If a system no longer has it, the standard controls are shown.
+        if controller.responds(to: Selector(("setControlsStyle:"))) {
+            controller.setValue(1, forKey: "controlsStyle")
+        }
         self.controller = controller
         possibleObservation = controller.observe(\.isPictureInPicturePossible, options: [.new]) { [weak self] _, _ in
             Task { @MainActor in self?.startIfWanted() }
