@@ -17,5 +17,6 @@ status: simulated
 - 2026-11-12, iPad mini (A17 Pro) simulator, iOS 27.0, third version, scripted speech delivered as one growing stretch: pieces were translated while the stretch went on, and the unfinished end showed a dimmer provisional translation. Simulator only.
 - 2026-11-12, physical iPad, third version, which cut a piece about every three seconds and showed a provisional translation: the owner reported that translations changed or were gone before they could be read. See window-002.
 - 2026-11-12, the same recording replayed with this version's rules: seven pieces, each a sentence or a clause ending in a comma, all kept before the final result.
+- 2026-11-12, physical iPad, the version with those rules, on a Japanese video of quick conversation: the owner reported captions late and badly cut, and the result unusable. On a Mac the recognizer was then seen to finalize such speech only every 6 to 17 seconds, with pauses between speakers too short for those rules to notice. That led to listening for pauses in the audio; see translation-004.
 - Physical iPad, this version: not run.
 - Physical iPhone: not run.

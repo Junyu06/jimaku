@@ -73,6 +73,16 @@ final class SessionController {
     private var recognition: CaptionPlaceholder.Readiness = .preparing
     private var pipeline = TranslationPipeline()
     private var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
+    /// Listens for the speaker stopping, so the recognizer can be told at once.
+    private var pauses = PauseDetector(sampleRate: AudioRing.sampleRate)
+    /// When to show the rest of a translation that is longer than its row, as a
+    /// time since the device started. Nil when nothing is waiting.
+    private var pageDue: Double?
+    /// The board's page that `pageDue` was set for.
+    private var pageSeen = 0
+    /// How long the first lines of a long translation stay before the rest is
+    /// shown, in seconds: about the time it takes to read two lines.
+    private static let pageTime = 2.5
 
     /// Character widths already measured, by row role and column count.
     private var measuredWidths: [String: GlyphWidths] = [:]
@@ -142,6 +152,9 @@ final class SessionController {
         transcript = Transcript(rules: language.chunkRules)
         pipeline.reset()
         board = CaptionBoard(layout: layout)
+        pauses = PauseDetector(sampleRate: AudioRing.sampleRate)
+        pageDue = nil
+        pageSeen = board.page
         recognition = .preparing
         let token = sessionGeneration.advance()
         audio.beginCapture()
@@ -261,9 +274,19 @@ final class SessionController {
                 let hasAudio = status == .receiving || status == .stalled
                 self.window.show(audioLevel: hasAudio ? AudioLevel.meter(for: samples) : nil)
                 if self.recognition == .ready {
-                    self.recognizer.append(samples)
-                    // A pause is noticed here too, in case the recognizer sends
-                    // nothing while the speaker is silent.
+                    // When the speaker stops, the recognizer is asked to settle
+                    // on the sentence now. That is what ends most captions. It
+                    // is told between the samples before the pause and those
+                    // after it.
+                    var handed = 0
+                    for place in self.pauses.take(samples) {
+                        self.recognizer.append(Array(samples[handed..<place]))
+                        self.recognizer.speakerPaused()
+                        handed = place
+                    }
+                    self.recognizer.append(Array(samples[handed...]))
+                    // Audio that never goes quiet gives no such pause, so a guess
+                    // that stops changing ends a caption as well.
                     let kept = self.transcript.elapse(to: ProcessInfo.processInfo.systemUptime)
                     if !kept.isEmpty {
                         kept.forEach { self.pipeline.settle($0) }
@@ -271,6 +294,7 @@ final class SessionController {
                         self.refreshWindow()
                     }
                 }
+                self.turnPageIfDue()
                 elapsed += interval
                 try? await Task.sleep(for: .seconds(interval))
             }
@@ -424,6 +448,12 @@ final class SessionController {
         } else {
             board.relay(layout, showing: transcript, translating: pipeline.hasWork)
         }
+        if board.page != pageSeen {
+            // The translation row shows something new: if there is more of it
+            // than fits, its reading time starts now.
+            pageSeen = board.page
+            pageDue = board.hasMore ? ProcessInfo.processInfo.systemUptime + Self.pageTime : nil
+        }
         if board.isEmpty {
             let available = pipeline.isTranslationAvailable
             let placeholder = CaptionPlaceholder.choose(
@@ -437,6 +467,15 @@ final class SessionController {
         } else {
             window.show(.rows(board.rows))
         }
+    }
+
+    /// Moves on to the rest of a translation longer than its row, once its first
+    /// lines have been up for `pageTime`.
+    private func turnPageIfDue() {
+        guard session.isActive, let due = pageDue, ProcessInfo.processInfo.systemUptime >= due else { return }
+        pageDue = nil
+        board.showMore()
+        refreshWindow()
     }
 
     private func text(for placeholder: CaptionPlaceholder) -> String {

@@ -84,12 +84,107 @@ struct CaptionBoardTests {
         #expect(board.rows.map(\.lineCount) == [1, 2])
     }
 
-    @Test("Kept speech is settled text; the speech in progress follows as tentative")
+    @Test("Kept speech is settled text, and stays until the next speech begins")
     func originalRow() {
         var board = CaptionBoard(layout: layout)
-        board.show(said([("Hello.", nil)], pending: "How are"))
-        #expect(board.rows[0].lines == [CaptionLine(settled: "Hello.", tentative: " How are")])
+        board.show(said([("Hello.", nil)]))
+        #expect(board.rows[0].lines == [CaptionLine(settled: "Hello.")])
         #expect(!board.isEmpty)
+    }
+
+    @Test("The speech in progress is tentative text on a line of its own")
+    func speechInProgress() {
+        var board = CaptionBoard(layout: layout)
+        board.show(said([("Hello.", nil)], pending: "How are"))
+        // The original row has one line, so the new speech takes it.
+        #expect(board.rows[0].lines == [CaptionLine(settled: "", tentative: "How are")])
+    }
+
+    @Test("Each sentence starts on a new line, on both rows")
+    func sentencesApart() {
+        let roomy = CaptionLayout(
+            original: CaptionLayout.Row(columns: 20, lines: 2, role: .secondary),
+            translation: CaptionLayout.Row(columns: 12, lines: 2, role: .primary)
+        )
+        var board = CaptionBoard(layout: roomy)
+        board.show(said([("Hello.", "你好。"), ("Bye.", "再见。")]))
+        #expect(texts(board.rows[0]) == ["Hello.", "Bye."])
+        #expect(texts(board.rows[1]) == ["你好。", "再见。"])
+    }
+
+    @Test("A translation longer than its row is shown from its beginning, then the rest")
+    func longTranslationPages() {
+        var board = CaptionBoard(layout: layout)
+        board.show(said([("Hello.", "你好。"), ("How are you today?", "你今天过得怎么样？我很想知道。")]))
+        #expect(texts(board.rows[1]) == ["你今天过得怎", "么样？我很想"])
+        #expect(board.hasMore)
+        board.showMore()
+        #expect(texts(board.rows[1]) == ["么样？我很想", "知道。"])
+        #expect(!board.hasMore)
+    }
+
+    @Test("The page counts up with each new translation and each turn, not with speech in progress")
+    func pageCount() {
+        var transcript = said([("Hello.", "你好。")])
+        var board = CaptionBoard(layout: layout)
+        board.show(transcript)
+        let first = board.page
+        transcript.apply(.partial("How are"), at: 1)
+        board.show(transcript)
+        board.show(transcript)
+        #expect(board.page == first)
+        for kept in transcript.apply(.final("How are you today?"), at: 2) {
+            transcript.setTranslation("你今天过得怎么样？我很想知道。", for: kept.id)
+        }
+        board.show(transcript)
+        #expect(board.page == first + 1)
+        board.showMore()
+        #expect(board.page == first + 2)
+        // Nothing more to show: the page stays.
+        board.showMore()
+        #expect(board.page == first + 2)
+    }
+
+    @Test("A long translation whose first lines look like what was shown before is still a new page")
+    func samePictureNewPage() {
+        let only = CaptionLayout(original: nil, translation: CaptionLayout.Row(columns: 12, lines: 2, role: .primary))
+        var transcript = said([("One.", "一二三四五六七八九十甲乙")])
+        var board = CaptionBoard(layout: only)
+        board.show(transcript)
+        let rows = board.rows
+        let page = board.page
+        for kept in transcript.apply(.final("Two."), at: 1) {
+            transcript.setTranslation("一二三四五六七八九十甲乙丙", for: kept.id)
+        }
+        board.show(transcript)
+        #expect(board.rows == rows)
+        #expect(board.page == page + 1)
+        #expect(board.hasMore)
+    }
+
+    @Test("Laying the captions out again starts a new page")
+    func relayStartsAPage() {
+        let transcript = said([("Hello.", "你好。")])
+        var board = CaptionBoard(layout: layout)
+        board.show(transcript)
+        let page = board.page
+        board.relay(CaptionLayout(original: nil, translation: CaptionLayout.Row(columns: 30, lines: 3, role: .primary)), showing: transcript)
+        #expect(board.page > page)
+    }
+
+    @Test("The original row does not page: of long speech it shows the end")
+    func originalRowShowsTheEnd() {
+        var board = CaptionBoard(layout: layout)
+        board.show(said([("Hello there my friend, how are you today?", nil)]))
+        #expect(texts(board.rows[0]) == ["today?"])
+        #expect(!board.hasMore)
+    }
+
+    @Test("A sentence that needs every line of its row is shown alone")
+    func longSentenceAlone() {
+        var board = CaptionBoard(layout: layout)
+        board.show(said([("Hello.", "你好。"), ("How are you today?", "你今天过得怎么样？")]))
+        #expect(texts(board.rows[1]) == ["你今天过得怎", "么样？"])
     }
 
     @Test("Translations are settled text, and nothing else is shown as translation")
@@ -177,8 +272,8 @@ struct CaptionBoardTests {
     func rolling() {
         var board = CaptionBoard(layout: layout)
         board.show(said([("Hello there my friend.", "你好我的朋友。"), ("How are you today?", "你今天过得怎么样？")]))
-        #expect(texts(board.rows[0]) == ["today?"])
-        #expect(texts(board.rows[1]) == ["友。你今天过", "得怎么样？"])
+        #expect(texts(board.rows[0]) == ["How are you today?"])
+        #expect(texts(board.rows[1]) == ["你今天过得怎", "么样？"])
     }
 
     @Test("The board breaks lines by the widths its layout carries")
@@ -207,10 +302,11 @@ struct CaptionBoardTests {
         board.relay(wide, showing: transcript)
         #expect(board.rows.map(\.role) == [.primary])
         // "Fine" is still waiting to be translated.
-        #expect(board.rows[0].lines == [CaptionLine(settled: "你好。你好吗？", tentative: "…")])
+        let expected = [CaptionLine(settled: "你好。"), CaptionLine(settled: "你好吗？", tentative: "…")]
+        #expect(board.rows[0].lines == expected)
         // Nothing is added twice afterwards.
         board.show(transcript)
-        #expect(board.rows[0].lines == [CaptionLine(settled: "你好。你好吗？", tentative: "…")])
+        #expect(board.rows[0].lines == expected)
     }
 
     @Test("A board with only the original row shows it as the main row")
