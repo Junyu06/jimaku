@@ -495,6 +495,32 @@ struct RollingRowTests {
         #expect(!all.hasMore)
     }
 
+    @Test("A mark on an empty page, taken back, leaves the page empty for the first text")
+    func markBeforeAnyText() {
+        var row = flowing(lines: 2)
+        row.setTentative("…")
+        #expect(row.visible == [CaptionLine(settled: "", tentative: "…")])
+        row.setTentative("")
+        #expect(row.visible.isEmpty)
+        #expect(!row.hasMore)
+        row.append("一")
+        #expect(texts(row) == ["一"])
+    }
+
+    @Test("By measured widths, a text that just fits stays on the page and one that is just too wide turns it")
+    func measuredWidthsDecideThePage() {
+        let widths = GlyphWidths(narrow: ["a": 1.5, " ": 1])
+        var row = RollingRow(columns: 4, lines: 1, pages: true, tentativeWraps: false, widths: widths)
+        row.append("a")
+        row.append("a")
+        // 1.5 + 1 + 1.5 columns: exactly the line.
+        #expect(texts(row) == ["a a"])
+        #expect(!row.hasMore)
+        row.append("a")
+        #expect(texts(row) == ["a"])
+        #expect(!row.hasMore)
+    }
+
     @Test("Flowing pages turned, a mark taken back, text added, and pages turned again keep the row in step")
     func flowingPagesAndMarks() {
         var row = flowing(columns: 4, lines: 2)
