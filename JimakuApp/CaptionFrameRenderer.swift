@@ -30,18 +30,11 @@ struct CaptionFrameRenderer {
 
     private static let log = Logger(subsystem: "Jimaku", category: "captions")
 
-    private static let meterHeight = CGFloat(CaptionFrame.meterHeight)
-    private static let meterTrack = UIColor(white: 1, alpha: 0.14)
-    private static let meterFill = UIColor(red: 0.98, green: 0.82, blue: 0.25, alpha: 1)
-
-    /// - Parameters:
-    ///   - height: the frame's height in pixels, from `CaptionFrame.height(for:)`.
-    ///   - audioLevel: 0...1, drawn as a thin meter along the bottom so the
-    ///     reader can see that audio is arriving. Nil hides the meter.
-    func makeSampleBuffer(for content: CaptionContent, height: Double, audioLevel: Double? = nil) -> CMSampleBuffer? {
+    /// - Parameter height: the frame's height in pixels, from `CaptionFrame.height(for:)`.
+    func makeSampleBuffer(for content: CaptionContent, height: Double) -> CMSampleBuffer? {
         let size = Self.frameSize(height: height)
         guard let pixelBuffer = makePixelBuffer(size) else { return nil }
-        draw(content, audioLevel: audioLevel, into: pixelBuffer, size: size)
+        draw(content, into: pixelBuffer, size: size)
         return makeSampleBuffer(from: pixelBuffer)
     }
 
@@ -62,7 +55,7 @@ struct CaptionFrameRenderer {
         return pixelBuffer
     }
 
-    private func draw(_ content: CaptionContent, audioLevel: Double?, into pixelBuffer: CVPixelBuffer, size: CGSize) {
+    private func draw(_ content: CaptionContent, into pixelBuffer: CVPixelBuffer, size: CGSize) {
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
 
@@ -87,30 +80,11 @@ struct CaptionFrameRenderer {
         UIGraphicsPushContext(context)
         defer { UIGraphicsPopContext() }
 
-        var area = CGRect(origin: .zero, size: size).insetBy(dx: Self.padding, dy: Self.padding)
-        // The meter's space is always set aside, so captions do not move when it
-        // comes and goes.
-        let (meter, rest) = area.divided(atDistance: Self.meterHeight, from: .maxYEdge)
-        area = rest.inset(by: UIEdgeInsets(top: 0, left: 0, bottom: Self.rowSpacing, right: 0))
-        if let audioLevel {
-            drawMeter(level: audioLevel, in: meter)
-        }
+        let area = CGRect(origin: .zero, size: size).insetBy(dx: Self.padding, dy: Self.padding)
         switch content {
         case .rows(let rows): draw(rows, in: area)
         case .notice(let text): draw(notice: text, in: area)
         }
-    }
-
-    private func drawMeter(level: Double, in rect: CGRect) {
-        let radius = rect.height / 2
-        Self.meterTrack.setFill()
-        UIBezierPath(roundedRect: rect, cornerRadius: radius).fill()
-        let clamped = min(max(level, 0), 1)
-        guard clamped > 0 else { return }
-        var fill = rect
-        fill.size.width = max(rect.width * clamped, rect.height)
-        Self.meterFill.setFill()
-        UIBezierPath(roundedRect: fill, cornerRadius: radius).fill()
     }
 
     /// Draws the rows as one block, centered vertically. The block's size depends

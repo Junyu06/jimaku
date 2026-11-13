@@ -273,38 +273,3 @@ struct AudioAvailabilityTests {
         #expect(AudioAvailability.assess(isBroadcasting: true, lastHeartbeat: 94.9, lastWrite: 0, now: 100) == .notBroadcasting)
     }
 }
-
-@Suite("AudioLevel")
-struct AudioLevelTests {
-    @Test("No samples read as silence")
-    func emptyIsSilent() {
-        #expect(AudioLevel.meter(for: []) == 0)
-    }
-
-    @Test("Digital silence reads as zero")
-    func silenceIsZero() {
-        #expect(AudioLevel.meter(for: [Int16](repeating: 0, count: 480)) == 0)
-    }
-
-    @Test("A full-scale signal reads as one")
-    func fullScaleIsOne() {
-        let samples = (0..<480).map { $0 % 2 == 0 ? Int16.max : Int16.min }
-        #expect(AudioLevel.meter(for: samples) == 1)
-    }
-
-    @Test("A louder signal reads higher than a quieter one")
-    func louderIsHigher() {
-        let quiet = [Int16](repeating: 300, count: 480)
-        let loud = [Int16](repeating: 6000, count: 480)
-        let quietLevel = AudioLevel.meter(for: quiet)
-        let loudLevel = AudioLevel.meter(for: loud)
-        #expect(quietLevel > 0)
-        #expect(loudLevel > quietLevel)
-        #expect(loudLevel < 1)
-    }
-
-    @Test("A signal below the floor reads as zero")
-    func belowFloorIsZero() {
-        #expect(AudioLevel.meter(for: [Int16](repeating: 2, count: 480)) == 0)
-    }
-}
