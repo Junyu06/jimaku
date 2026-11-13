@@ -4,7 +4,7 @@ supersedes: the frame heights named in 2026-11-12-allow-a-fifth-line-of-translat
 
 # Take the audio meter out of the caption window
 
-The caption window no longer draws a level meter along its bottom edge, and no space is set aside for one. The frame holds the rows and the room around them and nothing else. A frame that had to be taller than 400 pixels is 20 pixels lower than before: with the original row and five lines of translation it is now 418 pixels high at the small size, 474 at the medium size, and 528 at the large size, for a width of 1200.
+The caption window no longer draws a level meter along its bottom edge, and no space is set aside for one. The frame holds the rows and the room around them and nothing else. A frame that had to be taller than 400 pixels is up to 20 pixels lower than before, and never lower than 400: with the original row and five lines of translation it is now 418 pixels high at the small size, 474 at the medium size, and 528 at the large size, for a width of 1200.
 
 Why: the meter was there to show that the audio of another app was reaching this one, while that was still in doubt. It has been seen to arrive on a physical iPad in every session since, and the owner asked for the bar to go: it moves all the time at the edge of the text and takes room.
 
