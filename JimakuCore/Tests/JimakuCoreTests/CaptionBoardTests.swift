@@ -149,8 +149,36 @@ struct CaptionBoardTests {
         #expect(texts(board.rows[1]) == ["你今天过得怎", "么样？我很想"])
         #expect(board.hasMore)
         board.showMore()
-        #expect(texts(board.rows[1]) == ["么样？我很想", "知道。"])
+        #expect(texts(board.rows[1]) == ["知道。"])
         #expect(!board.hasMore)
+    }
+
+    @Test("The translation row fills like a page and starts a new page when the next sentence does not fit")
+    func translationRowTurnsPages() {
+        var transcript = said([("One.", "一。")])
+        var board = CaptionBoard(layout: layout)
+        board.show(transcript)
+        func add(_ original: String, _ translation: String, at time: Double) {
+            for kept in transcript.apply(.final(original), at: time) {
+                transcript.setTranslation(translation, for: kept.id)
+            }
+            board.show(transcript)
+        }
+        add("Two.", "二。", at: 1)
+        #expect(texts(board.rows[1]) == ["一。", "二。"])
+        add("Three.", "三。", at: 2)
+        #expect(texts(board.rows[1]) == ["三。"])
+        add("Four.", "四。", at: 3)
+        #expect(texts(board.rows[1]) == ["三。", "四。"])
+        #expect(!board.hasMore)
+    }
+
+    @Test("A page is given a second and a quarter of reading time for each of its lines")
+    func pageTime() {
+        #expect(CaptionBoard(layout: layout).pageTime == 2.5)
+        #expect(CaptionBoard(layout: CaptionLayout(style: CaptionStyle(lines: 5))).pageTime == 6.25)
+        let alone = CaptionLayout(original: CaptionLayout.Row(columns: 24, lines: 2, role: .primary), translation: nil)
+        #expect(CaptionBoard(layout: alone).pageTime == 2.5)
     }
 
     @Test("The page counts up with each new translation and each turn, not with speech in progress")
@@ -298,7 +326,7 @@ struct CaptionBoardTests {
         #expect(texts(board.rows[1]) == ["二。"])
     }
 
-    @Test("Rows roll on their own when they are full")
+    @Test("A full original row rolls, and a full translation row starts a new page")
     func rolling() {
         var board = CaptionBoard(layout: layout)
         board.show(said([("Hello there my friend.", "你好我的朋友。"), ("How are you today?", "你今天过得怎么样？")]))

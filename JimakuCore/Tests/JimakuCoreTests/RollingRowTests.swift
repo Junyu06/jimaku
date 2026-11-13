@@ -288,51 +288,106 @@ struct RollingRowTests {
 
     // MARK: Paging
 
-    @Test("A row that pages shows a text longer than itself from its beginning")
+    private func paged(columns: Int = 10, lines: Int) -> RollingRow {
+        RollingRow(columns: columns, lines: lines, textsApart: true, pages: true, tentativeWraps: false)
+    }
+
+    @Test("A row that pages fills from the top, each text on a line of its own")
+    func pageFills() {
+        var row = paged(lines: 3)
+        row.append("一")
+        #expect(texts(row) == ["一"])
+        row.append("二")
+        row.append("三")
+        #expect(texts(row) == ["一", "二", "三"])
+        #expect(!row.hasMore)
+    }
+
+    @Test("When the page is full the next text starts a new page, and nothing of the old one stays")
+    func pageTurns() {
+        var row = paged(lines: 3)
+        ["一", "二", "三"].forEach { row.append($0) }
+        row.append("四")
+        #expect(texts(row) == ["四"])
+        #expect(!row.hasMore)
+        row.append("五")
+        #expect(texts(row) == ["四", "五"])
+    }
+
+    @Test("A text that does not fit in what is left of the page starts a new page whole")
+    func textStartsANewPage() {
+        var row = paged(lines: 3)
+        row.append("一")
+        row.append("一二三四五六七")
+        #expect(texts(row) == ["一", "一二三四五", "六七"])
+        row.append("甲乙丙丁戊己")
+        #expect(texts(row) == ["甲乙丙丁戊", "己"])
+        #expect(!row.hasMore)
+    }
+
+    @Test("Text on a page stays where it is while the page fills")
+    func textStaysInPlace() {
+        var row = paged(lines: 3)
+        row.append("一")
+        let first = row.visible[0]
+        row.append("二")
+        row.append("三")
+        #expect(row.visible[0] == first)
+    }
+
+    @Test("A row that pages shows a text longer than a page from its beginning")
     func pagesFromTheBeginning() {
-        var row = RollingRow(columns: 10, lines: 2, textsApart: true, pages: true)
+        var row = paged(lines: 2)
         row.append("一二三")
         row.append("一二三四五六七八九十甲乙丙")
         #expect(texts(row) == ["一二三四五", "六七八九十"])
         #expect(row.hasMore)
     }
 
-    @Test("Showing more rolls on to the rest of the text, and then there is no more")
+    @Test("Showing more turns to the rest of the text, and then there is no more")
     func showMore() {
-        var row = RollingRow(columns: 10, lines: 2, textsApart: true, pages: true)
+        var row = paged(lines: 2)
         row.append("一二三四五六七八九十甲乙丙")
         row.showMore()
-        #expect(texts(row) == ["六七八九十", "甲乙丙"])
+        #expect(texts(row) == ["甲乙丙"])
         #expect(!row.hasMore)
         row.showMore()
-        #expect(texts(row) == ["六七八九十", "甲乙丙"])
+        #expect(texts(row) == ["甲乙丙"])
     }
 
-    @Test("A text of many lines is shown a page at a time")
+    @Test("A text of many lines is shown a page at a time, no line twice")
     func severalPages() {
-        var row = RollingRow(columns: 4, lines: 2, textsApart: true, pages: true)
+        var row = paged(columns: 4, lines: 2)
         row.append("一二三四五六七八九十")
         #expect(texts(row) == ["一二", "三四"])
         row.showMore()
         #expect(texts(row) == ["五六", "七八"])
         #expect(row.hasMore)
         row.showMore()
-        #expect(texts(row) == ["七八", "九十"])
+        #expect(texts(row) == ["九十"])
         #expect(!row.hasMore)
     }
 
-    @Test("The next text takes over from a text that still had more to show")
-    func nextTextTakesOver() {
-        var row = RollingRow(columns: 10, lines: 2, textsApart: true, pages: true)
+    @Test("The next text goes on the page where a long text ends, and that page is shown")
+    func nextTextAfterALongOne() {
+        var row = paged(lines: 2)
         row.append("一二三四五六七八九十甲乙丙")
         row.append("丁")
-        #expect(texts(row) == ["丁"])
+        #expect(texts(row) == ["甲乙丙", "丁"])
+        #expect(!row.hasMore)
+    }
+
+    @Test("Of several texts added at once, the page on which the newest begins is shown")
+    func severalTextsAtOnce() {
+        var row = paged(lines: 2)
+        row.update(appending: ["一", "二", "三"], tentative: "")
+        #expect(texts(row) == ["三"])
         #expect(!row.hasMore)
     }
 
     @Test("A mark added while a page is shown does not turn the page")
     func markDoesNotTurnThePage() {
-        var row = RollingRow(columns: 10, lines: 2, textsApart: true, pages: true, tentativeWraps: false)
+        var row = paged(lines: 2)
         row.append("一二三四五六七八九十甲乙丙")
         row.setTentative("…")
         #expect(texts(row) == ["一二三四五", "六七八九十"])
@@ -340,84 +395,27 @@ struct RollingRowTests {
         #expect(row.visible.last == CaptionLine(settled: "甲乙丙", tentative: "…"))
     }
 
-    @Test("A paging row comes back to the start of a long text when new speech is withdrawn")
-    func pagingRowComesBack() {
+    @Test("A row that pages gives tentative text no line of its own, whatever it is told")
+    func pagedRowKeepsTentativeTextOnTheLine() {
         var row = RollingRow(columns: 2, lines: 1, textsApart: true, pages: true)
+        #expect(!row.tentativeWraps)
         row.append("甲乙丙")
         #expect(texts(row) == ["甲"])
         row.setTentative("丁")
-        #expect(texts(row) == ["丁"])
-        row.setTentative("")
         #expect(texts(row) == ["甲"])
+        row.setTentative("")
         row.showMore()
         row.showMore()
         #expect(texts(row) == ["丙"])
-    }
-
-    @Test("A row that does not page has nothing more to show")
-    func noPaging() {
-        var row = RollingRow(columns: 10, lines: 2, textsApart: true)
-        row.append("一二三四五六七八九十甲乙丙")
         #expect(!row.hasMore)
-        #expect(texts(row) == ["六七八九十", "甲乙丙"])
     }
 
-    @Test("Speech that is kept shorter than it was guessed is shown from its beginning")
-    func settledShorterThanTentative() {
-        var row = RollingRow(columns: 10, lines: 2, textsApart: true)
-        row.append("甲乙")
-        row.setTentative("一二三四五六七八九十甲乙丙")
-        #expect(texts(row) == ["六七八九十", "甲乙丙"])
-        row.update(appending: ["一二三四五六七"], tentative: "")
-        #expect(texts(row) == ["一二三四五", "六七"])
-    }
-
-    @Test("When new speech is withdrawn, the text before it comes back whole")
-    func withdrawnSpeechBringsTheTextBack() {
-        var row = RollingRow(columns: 10, lines: 2, textsApart: true)
-        row.append("一二三四五六七")
-        row.setTentative("八九")
-        #expect(texts(row) == ["八九"])
-        row.setTentative("")
-        #expect(texts(row) == ["一二三四五", "六七"])
-    }
-
-    @Test("Tentative text that gets shorter is shown from its beginning again")
-    func tentativeGetsShorter() {
-        var row = RollingRow(columns: 10, lines: 2, textsApart: true)
-        row.append("甲乙")
-        row.setTentative("一二三四五六七八九十甲乙丙")
-        row.setTentative("一二三四五六七")
-        #expect(texts(row) == ["一二三四五", "六七"])
-    }
-
-    @Test("Tentative text that may wrap starts a new line after a text kept apart")
-    func textsApartTentative() {
-        var row = RollingRow(columns: 20, lines: 2, textsApart: true)
-        row.append("一二三")
-        row.setTentative("四五")
-        #expect(row.visible == [CaptionLine(settled: "一二三"), CaptionLine(settled: "", tentative: "四五")])
-        // It becomes settled text on the line it was on.
-        row.update(appending: ["四五六"], tentative: "")
-        #expect(texts(row) == ["一二三", "四五六"])
-    }
-
-    @Test("A mark that may not wrap stays at the end of the last text")
-    func textsApartMark() {
-        var row = RollingRow(columns: 20, lines: 2, textsApart: true, tentativeWraps: false)
-        row.append("一二三")
-        row.setTentative("…")
-        #expect(row.visible == [CaptionLine(settled: "一二三", tentative: "…")])
-    }
-
-    @Test("On a row of one line, new speech takes the place of the text before it")
-    func textsApartOneLine() {
-        var row = RollingRow(columns: 20, lines: 1, textsApart: true)
-        row.append("一二三")
-        row.setTentative("四")
-        #expect(row.visible == [CaptionLine(settled: "", tentative: "四")])
-        // If the new speech is withdrawn, the text before it comes back.
-        row.setTentative("")
-        #expect(texts(row) == ["一二三"])
+    @Test("A row that pages goes on for many pages")
+    func manyPages() {
+        var row = paged(lines: 3)
+        for index in 0..<100 { row.append("第\(index)") }
+        #expect(texts(row) == ["第99"])
+        row.append("末")
+        #expect(texts(row) == ["第99", "末"])
     }
 }
