@@ -29,6 +29,9 @@ final class CaptionWindow: NSObject {
     private var controller: AVPictureInPictureController?
     private var possibleObservation: NSKeyValueObservation?
     private var content = CaptionContent.rows([])
+    /// The height of the frames drawn, in pixels. The window takes its shape
+    /// from it.
+    private(set) var frameHeight = CaptionFrame.minimumHeight
     private var audioLevel: Double?
     private var wantsToFloat = false
 
@@ -61,9 +64,12 @@ final class CaptionWindow: NSObject {
         }
     }
 
-    func show(_ content: CaptionContent) {
-        guard content != self.content else { return }
+    /// Shows `content` in a frame of the given height. A layout with more lines
+    /// needs a taller frame; the window changes shape to match.
+    func show(_ content: CaptionContent, frameHeight: Double) {
+        guard content != self.content || frameHeight != self.frameHeight else { return }
         self.content = content
+        self.frameHeight = frameHeight
         render()
     }
 
@@ -120,7 +126,7 @@ final class CaptionWindow: NSObject {
     }
 
     private func render() {
-        guard let sampleBuffer = renderer.makeSampleBuffer(for: content, audioLevel: audioLevel) else { return }
+        guard let sampleBuffer = renderer.makeSampleBuffer(for: content, height: frameHeight, audioLevel: audioLevel) else { return }
         let sampleRenderer = displayLayer.sampleBufferRenderer
         if sampleRenderer.status == .failed {
             sampleRenderer.flush()

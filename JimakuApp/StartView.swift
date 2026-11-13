@@ -13,7 +13,7 @@ struct StartView: View {
         Form {
             Section {
                 CaptionPreview(layer: controller.window.displayLayer)
-                    .aspectRatio(CaptionFrameRenderer.frameSize, contentMode: .fit)
+                    .aspectRatio(controller.frameSize, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
 
@@ -82,6 +82,18 @@ struct StartView: View {
                     .labelsHidden()
                     .frame(maxWidth: 220)
                     .accessibilityIdentifier("textSize")
+                }
+
+                LabeledContent("中文行数") {
+                    Picker("中文行数", selection: $controller.style.lines) {
+                        ForEach(CaptionStyle.lineChoices, id: \.self) { lines in
+                            Text("\(lines)").tag(lines)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 220)
+                    .accessibilityIdentifier("lines")
                 }
             }
 

@@ -15,35 +15,37 @@ import os
 /// For that to hold, lines must be broken by how wide the characters really are in
 /// the font used here. `glyphWidths(for:)` measures it.
 struct CaptionFrameRenderer {
-    /// Pixel size of a frame. The floating window takes its aspect ratio from this.
-    static let frameSize = CGSize(width: 1200, height: 400)
-
-    private static let padding: CGFloat = 24
-    private static let rowSpacing: CGFloat = 10
+    // The frame's measures are in `CaptionFrame`, which also says how tall a
+    // frame has to be for a layout.
+    private static let padding = CGFloat(CaptionFrame.padding)
+    private static let rowSpacing = CGFloat(CaptionFrame.rowSpacing)
+    private static let leading = CGFloat(CaptionFrame.leading)
     private static let background = UIColor(white: 0.07, alpha: 1)
 
-    /// The share of the nominal size the font is drawn at, leaving a little slack
-    /// at the end of a full line.
-    private static let fill: CGFloat = 0.985
-
-    /// Line height as a multiple of the font size.
-    private static let leading: CGFloat = 1.2
+    /// The pixel size of a frame of the given height. The floating window takes
+    /// its aspect ratio from it.
+    static func frameSize(height: Double) -> CGSize {
+        CGSize(width: CaptionFrame.width, height: height)
+    }
 
     private static let log = Logger(subsystem: "Jimaku", category: "captions")
 
-    private static let meterHeight: CGFloat = 10
+    private static let meterHeight = CGFloat(CaptionFrame.meterHeight)
     private static let meterTrack = UIColor(white: 1, alpha: 0.14)
     private static let meterFill = UIColor(red: 0.98, green: 0.82, blue: 0.25, alpha: 1)
 
-    /// - Parameter audioLevel: 0...1, drawn as a thin meter along the bottom so the
-    ///   reader can see that audio is arriving. Nil hides the meter.
-    func makeSampleBuffer(for content: CaptionContent, audioLevel: Double? = nil) -> CMSampleBuffer? {
-        guard let pixelBuffer = makePixelBuffer() else { return nil }
-        draw(content, audioLevel: audioLevel, into: pixelBuffer)
+    /// - Parameters:
+    ///   - height: the frame's height in pixels, from `CaptionFrame.height(for:)`.
+    ///   - audioLevel: 0...1, drawn as a thin meter along the bottom so the
+    ///     reader can see that audio is arriving. Nil hides the meter.
+    func makeSampleBuffer(for content: CaptionContent, height: Double, audioLevel: Double? = nil) -> CMSampleBuffer? {
+        let size = Self.frameSize(height: height)
+        guard let pixelBuffer = makePixelBuffer(size) else { return nil }
+        draw(content, audioLevel: audioLevel, into: pixelBuffer, size: size)
         return makeSampleBuffer(from: pixelBuffer)
     }
 
-    private func makePixelBuffer() -> CVPixelBuffer? {
+    private func makePixelBuffer(_ size: CGSize) -> CVPixelBuffer? {
         let attributes: [CFString: Any] = [
             kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary,
             kCVPixelBufferCGBitmapContextCompatibilityKey: true,
@@ -51,8 +53,8 @@ struct CaptionFrameRenderer {
         var pixelBuffer: CVPixelBuffer?
         CVPixelBufferCreate(
             kCFAllocatorDefault,
-            Int(Self.frameSize.width),
-            Int(Self.frameSize.height),
+            Int(size.width),
+            Int(size.height),
             kCVPixelFormatType_32BGRA,
             attributes as CFDictionary,
             &pixelBuffer
@@ -60,11 +62,10 @@ struct CaptionFrameRenderer {
         return pixelBuffer
     }
 
-    private func draw(_ content: CaptionContent, audioLevel: Double?, into pixelBuffer: CVPixelBuffer) {
+    private func draw(_ content: CaptionContent, audioLevel: Double?, into pixelBuffer: CVPixelBuffer, size: CGSize) {
         CVPixelBufferLockBaseAddress(pixelBuffer, [])
         defer { CVPixelBufferUnlockBaseAddress(pixelBuffer, []) }
 
-        let size = Self.frameSize
         guard
             let context = CGContext(
                 data: CVPixelBufferGetBaseAddress(pixelBuffer),
@@ -115,7 +116,7 @@ struct CaptionFrameRenderer {
     /// Draws the rows as one block, centered vertically. The block's size depends
     /// only on how many lines the rows have room for, not on how many are filled.
     private func draw(_ rows: [CaptionRow], in area: CGRect) {
-        let sizes = rows.map { Self.fontSize(columns: $0.columns, width: area.width) }
+        let sizes = rows.map { Self.fontSize(columns: $0.columns) }
         let height =
             zip(rows, sizes).reduce(0) { $0 + CGFloat($1.0.lineCount) * $1.1 * Self.leading }
             + Self.rowSpacing * CGFloat(max(rows.count - 1, 0))
@@ -134,14 +135,12 @@ struct CaptionFrameRenderer {
         }
     }
 
-    /// The font size at which `columns` columns fill the width: a wide character
-    /// is as wide as the font size, and takes two columns.
-    private static func fontSize(columns: Int, width: CGFloat) -> CGFloat {
-        width * 2 / CGFloat(max(columns, 2)) * fill
+    private static func fontSize(columns: Int) -> CGFloat {
+        CGFloat(CaptionFrame.fontSize(columns: columns))
     }
 
     /// The width captions are drawn in, in pixels.
-    private static var textWidth: CGFloat { frameSize.width - padding * 2 }
+    private static var textWidth: CGFloat { CGFloat(CaptionFrame.textWidth) }
 
     private static func weight(for role: CaptionRow.Role) -> UIFont.Weight {
         switch role {
@@ -156,7 +155,7 @@ struct CaptionFrameRenderer {
     /// size matters. Other narrow characters, such as accented letters, are taken
     /// to be as wide as the widest common letters.
     static func glyphWidths(role: CaptionRow.Role, columns: Int) -> GlyphWidths {
-        let size = fontSize(columns: columns, width: textWidth)
+        let size = fontSize(columns: columns)
         let font = UIFont.systemFont(ofSize: size, weight: weight(for: role))
         let column = textWidth / CGFloat(max(columns, 2))
         var narrow: [Character: Double] = [:]

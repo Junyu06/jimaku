@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: superseded in part by 2026-11-12-translate-a-sentence-only-when-it-has-ended.md. The fixed lines that roll up still stand. The translation row no longer shows a provisional translation; it shows a waiting mark instead. Superseded in part by 2026-11-12-show-each-sentence-on-a-line-of-its-own.md as well: pieces no longer follow one another on a line, and a row comes back when speech in progress is withdrawn.
+status: superseded in part by 2026-11-12-translate-a-sentence-only-when-it-has-ended.md. The fixed lines that roll up still stand. The translation row no longer shows a provisional translation; it shows a waiting mark instead. Superseded in part by 2026-11-12-show-each-sentence-on-a-line-of-its-own.md as well: pieces no longer follow one another on a line, and a row comes back when speech in progress is withdrawn. Superseded in part by 2026-11-12-let-the-reader-choose-how-many-lines-the-translation-has.md: the translation row has two to four lines as the reader chooses, and the frame grows taller than 400 pixels for them.
 supersedes: the sentence "Both caption rows run on like a ticker and show their end" in 2026-11-12-translate-speech-while-it-is-still-in-progress.md
 
 # Lay captions out in fixed lines that roll up
