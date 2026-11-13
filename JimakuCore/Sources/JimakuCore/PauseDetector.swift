@@ -15,6 +15,10 @@ public struct PauseDetector: Equatable, Sendable {
     public static let pauseInLongSpeech = 0.2
     /// Speech longer than this, in seconds, is cut at a shorter pause.
     public static let longSpeech = 2.5
+    /// Quiet that has lasted this long after speech may be a pause: it is worth
+    /// asking the recognizer for what was said, though the speaker may still go
+    /// on. It is never longer than the shortest certain pause.
+    public static let possiblePause = 0.2
     /// Less loud audio than this is no speech, so a click starts nothing.
     public static let minimumSpeech = 0.1
 
@@ -51,18 +55,35 @@ public struct PauseDetector: Equatable, Sendable {
     private var stepsSinceStart: Int?
     private var loudSteps = 0
     private var quietSteps = 0
+    /// Whether the quiet in progress has been reported as a possible pause.
+    private var possibleReported = false
+
+    /// A place in the audio where the speaker stopped, or may have.
+    public struct Pause: Equatable, Sendable {
+        /// The number of samples of the batch up to and including the one at
+        /// which the quiet had lasted long enough.
+        public var place: Int
+        /// Whether the quiet has lasted long enough to be sure. A pause that is
+        /// only possible is followed by a certain one at the same or a later
+        /// place, unless the speaker goes on first.
+        public var isCertain: Bool
+
+        public init(place: Int, isCertain: Bool) {
+            self.place = place
+            self.isCertain = isCertain
+        }
+    }
 
     public init(sampleRate: Int) {
         samplesPerStep = max(Int(Double(sampleRate) * Self.step), 1)
         fade = pow(0.5, Self.step / Self.halfLife)
     }
 
-    /// Takes the next samples and says where in them a pause was found: the
-    /// speaker had been speaking and had then been quiet long enough. Each place
-    /// is the number of samples of this batch up to and including the one at
-    /// which the quiet had lasted long enough. Usually there is none.
-    public mutating func take(_ samples: [Int16]) -> [Int] {
-        var pauses: [Int] = []
+    /// Takes the next samples and says where in them the speaker stopped, or
+    /// may have: first as a possible pause, once the quiet after speech has
+    /// lasted `possiblePause`, then as a certain one. Usually there is none.
+    public mutating func events(in samples: [Int16]) -> [Pause] {
+        var pauses: [Pause] = []
         for (index, sample) in samples.enumerated() {
             let value = Double(sample)
             sumOfSquares += value * value
@@ -71,28 +92,46 @@ public struct PauseDetector: Equatable, Sendable {
             let level = (sumOfSquares / Double(count)).squareRoot()
             sumOfSquares = 0
             count = 0
-            if take(level: level) { pauses.append(index + 1) }
+            let found = take(level: level)
+            if found.possible { pauses.append(Pause(place: index + 1, isCertain: false)) }
+            if found.certain { pauses.append(Pause(place: index + 1, isCertain: true)) }
         }
         return pauses
     }
 
-    private mutating func take(level: Double) -> Bool {
+    /// Takes the next samples and says where in them a pause was found for
+    /// certain: the speaker had been speaking and had then been quiet long
+    /// enough. Each place is the number of samples of this batch up to and
+    /// including the one at which the quiet had lasted long enough.
+    public mutating func take(_ samples: [Int16]) -> [Int] {
+        events(in: samples).filter(\.isCertain).map(\.place)
+    }
+
+    private mutating func take(level: Double) -> (possible: Bool, certain: Bool) {
         loudness = max(level, loudness * fade)
         if let steps = stepsSinceStart { stepsSinceStart = steps + 1 }
         guard level < max(Self.floor, loudness * Self.quietShare) else {
             loudSteps += 1
             quietSteps = 0
+            possibleReported = false
             if stepsSinceStart == nil { stepsSinceStart = 1 }
-            return false
+            return (false, false)
         }
         quietSteps += 1
-        guard let steps = stepsSinceStart else { return false }
+        guard let steps = stepsSinceStart else { return (false, false) }
+        let quiet = Double(quietSteps) * Self.step
+        let wasSpeech = Double(loudSteps) * Self.step >= Self.minimumSpeech - Self.step / 2
+        var possible = false
+        if !possibleReported, wasSpeech, quiet >= Self.possiblePause - Self.step / 2 {
+            possibleReported = true
+            possible = true
+        }
         let spoken = Double(steps - quietSteps) * Self.step
         let needed = spoken >= Self.longSpeech ? Self.pauseInLongSpeech : Self.pause
-        guard Double(quietSteps) * Self.step >= needed - Self.step / 2 else { return false }
-        let wasSpeech = Double(loudSteps) * Self.step >= Self.minimumSpeech - Self.step / 2
+        guard quiet >= needed - Self.step / 2 else { return (possible, false) }
         stepsSinceStart = nil
         loudSteps = 0
-        return wasSpeech
+        possibleReported = false
+        return (possible, wasSpeech)
     }
 }

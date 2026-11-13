@@ -2,19 +2,31 @@ import AVFoundation
 import JimakuCore
 import Speech
 
+/// What the recognizer reported, and where in the audio it ends.
+struct Heard: Sendable {
+    let update: RecognitionUpdate
+    /// Seconds from the first sample handed over to the end of the speech this
+    /// update covers. Nil when the recognizer does not say.
+    let end: Double?
+}
+
 /// Turns audio into text.
 @MainActor
 protocol SpeechRecognizing: AnyObject {
     /// Starts recognizing `language`. Updates arrive on the returned stream until
     /// `stop()` is called or recognition fails.
-    func start(language: SourceLanguage) async throws -> AsyncThrowingStream<RecognitionUpdate, Error>
+    func start(language: SourceLanguage) async throws -> AsyncThrowingStream<Heard, Error>
 
     /// Hands over the next samples, in the shared ring's format.
     func append(_ samples: [Int16])
 
-    /// Tells the recognizer that the speaker paused at the end of what has been
-    /// handed over. It then settles on the speech up to there and reports it as
-    /// final without waiting for more.
+    /// How much audio the recognizer has taken since it started, in seconds.
+    /// The ends it reports for speech are on the same clock.
+    var audioTime: Double { get }
+
+    /// Tells the recognizer that the speaker may have paused at the end of what
+    /// has been handed over. It then settles on the speech up to there and
+    /// reports it as final without waiting for more.
     func speakerPaused()
 
     func stop() async
@@ -53,7 +65,7 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         case pause(CMTime)
     }
 
-    func start(language: SourceLanguage) async throws -> AsyncThrowingStream<RecognitionUpdate, Error> {
+    func start(language: SourceLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
         await stop()
 
         guard SpeechTranscriber.isAvailable else { throw SpeechRecognitionError.unavailable }
@@ -92,12 +104,13 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
             throw error
         }
 
-        let (updates, updatesContinuation) = AsyncThrowingStream<RecognitionUpdate, Error>.makeStream()
+        let (updates, updatesContinuation) = AsyncThrowingStream<Heard, Error>.makeStream()
         resultsTask = Task {
             do {
                 for try await result in transcriber.results {
                     let text = String(result.text.characters)
-                    updatesContinuation.yield(result.isFinal ? .final(text) : .partial(text))
+                    updatesContinuation.yield(
+                        Heard(update: result.isFinal ? .final(text) : .partial(text), end: result.range.end.seconds))
                 }
                 updatesContinuation.finish()
             } catch {
@@ -131,6 +144,8 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         feed.yield(.audio(AnalyzerInput(buffer: buffer)))
         handedOver += samples.count
     }
+
+    var audioTime: Double { Double(handedOver) / Double(AudioRing.sampleRate) }
 
     func speakerPaused() {
         let time = CMTime(value: CMTimeValue(handedOver), timescale: CMTimeScale(AudioRing.sampleRate))
@@ -218,10 +233,10 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
     final class ScriptedSpeechRecognizer: SpeechRecognizing {
         private var task: Task<Void, Never>?
 
-        func start(language: SourceLanguage) async throws -> AsyncThrowingStream<RecognitionUpdate, Error> {
+        func start(language: SourceLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
             await stop()
             let sentences = DemoCaptions.speech(in: language).map(\.original)
-            let (updates, continuation) = AsyncThrowingStream<RecognitionUpdate, Error>.makeStream()
+            let (updates, continuation) = AsyncThrowingStream<Heard, Error>.makeStream()
             task = Task {
                 while !Task.isCancelled {
                     for sentence in sentences {
@@ -232,14 +247,14 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
                             isSpaced ? Self.wordEnds(in: text) : Array(stride(from: 2, to: text.count, by: 2))
                         let stepsPerBurst = isSpaced ? 3 : 4
                         for (index, end) in steps.enumerated() {
-                            continuation.yield(.partial(String(text[..<end])))
+                            continuation.yield(Heard(update: .partial(String(text[..<end])), end: nil))
                             let endsBurst = index % stepsPerBurst == stepsPerBurst - 1
                             try? await Task.sleep(for: .milliseconds(endsBurst ? 950 : 10))
                             if Task.isCancelled { break }
                         }
                         // The speaker stops, and the sentence is final soon after.
                         try? await Task.sleep(for: .milliseconds(400))
-                        continuation.yield(.final(sentence))
+                        continuation.yield(Heard(update: .final(sentence), end: nil))
                         try? await Task.sleep(for: .milliseconds(300))
                     }
                     try? await Task.sleep(for: .milliseconds(2500))
@@ -250,6 +265,8 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         }
 
         func append(_ samples: [Int16]) {}
+
+        var audioTime: Double { 0 }
 
         func speakerPaused() {}
 
