@@ -50,20 +50,28 @@ struct CaptionFrameTests {
         let height = { (size: CaptionStyle.TextSize, lines: Int) in
             CaptionFrame.height(for: CaptionLayout(style: CaptionStyle(textSize: size, lines: lines)))
         }
-        // Small text: a line of translation is 68.1 pixels high and the original line 42.6.
+        // Small text: a line of translation is 51.5 pixels high and the original line 36.8.
         #expect(height(.small, 4) == 400)
-        #expect(height(.small, 5) == 462)
-        // Medium: 90.8 and 52.4.
-        #expect(height(.medium, 3) == 404)
-        #expect(height(.medium, 5) == 586)
-        // Large: 113.5 and 59.2.
-        #expect(height(.large, 3) == 478)
+        #expect(height(.small, 5) == 406)
+        // Medium: 61.8 and 42.9.
+        #expect(height(.medium, 3) == 400)
+        #expect(height(.medium, 5) == 462)
+        // Large: 77.2 and 51.5.
+        #expect(height(.large, 4) == 472)
+        #expect(height(.large, 5) == 548)
     }
 
-    @Test("At the small size twenty Chinese characters fit a line of translation")
+    @Test("At the small size thirty Chinese characters fit a line of translation")
     func smallText() {
         let row = CaptionLayout(style: CaptionStyle(textSize: .small)).translation
-        #expect(row?.columns == 40)
-        #expect(abs(CaptionFrame.fontSize(columns: 40) - 56.74) < 0.01)
+        #expect(row?.columns == 60)
+        #expect(abs(CaptionFrame.fontSize(columns: 60) - 36.77) < 0.01)
+    }
+
+    @Test("Text has room around it: forty pixels at each edge, and lines set at 1.4 times the text size")
+    func room() {
+        #expect(CaptionFrame.padding == 40)
+        #expect(CaptionFrame.textWidth == 1120)
+        #expect(CaptionFrame.leading == 1.4)
     }
 }
