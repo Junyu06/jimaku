@@ -14,7 +14,7 @@ public struct CaptionStyle: Equatable, Sendable {
     }
 
     /// How many lines the main row may have.
-    public static let lineChoices = [2, 3, 4]
+    public static let lineChoices = [2, 3, 4, 5]
 
     public var textSize: TextSize
     public var mode: Mode

@@ -15,7 +15,7 @@ Accepted requirements for the first version. The Status section at the end says 
 - Runs on iPhone and iPad from one Swift codebase.
 - Source language is chosen by the user: English or Japanese. No automatic detection.
 - Target language is Simplified Chinese.
-- The floating window shows two rows by default: one line of the original above two lines of translation. The user can switch to translation only, and can choose two, three, or four lines of translation; the window grows taller for more lines and the text keeps its size.
+- The floating window shows two rows by default: one line of the original above two lines of translation. The user can switch to translation only, and can choose two to five lines of translation; the window grows taller for more lines and the text keeps its size.
 - Speech is translated one thing said at a time. A caption ends where the speaker pauses or a sentence ends; its translation appears then, on a line of its own, and is not replaced. Speech that runs on with neither is cut after about four seconds (up to about eight when it offers no place to cut). Speech that has not ended is not translated; the Chinese row shows a dim "…" while it waits.
 - Caption text that has been shown as settled does not change and does not move sideways. Rows have fixed lines and each sentence starts on a new line; when a row is full the oldest sentence leaves and the rest move up. On the original row, text that may still change is dimmer. The few cases where this does not hold are listed in `docs/decisions/2026-11-12-lay-captions-out-in-fixed-lines-that-roll-up.md`.
 - The user can switch the translation engine between the Translation framework language packs and the on-device Apple Intelligence model.
