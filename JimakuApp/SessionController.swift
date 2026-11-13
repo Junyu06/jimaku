@@ -91,10 +91,6 @@ final class SessionController {
     private var pageDue: Double?
     /// The board's page that `pageDue` was set for.
     private var pageSeen = 0
-    /// How long the first lines of a long translation stay before the rest is
-    /// shown, in seconds: about the time it takes to read two lines.
-    private static let pageTime = 2.5
-
     /// Character widths already measured, by row role and column count.
     private var measuredWidths: [String: GlyphWidths] = [:]
     private var translator: (any PreparedTranslator)?
@@ -466,7 +462,7 @@ final class SessionController {
             // The translation row shows something new: if there is more of it
             // than fits, its reading time starts now.
             pageSeen = board.page
-            pageDue = board.hasMore ? ProcessInfo.processInfo.systemUptime + Self.pageTime : nil
+            pageDue = board.hasMore ? ProcessInfo.processInfo.systemUptime + board.pageTime : nil
         }
         if board.isEmpty {
             let available = pipeline.isTranslationAvailable

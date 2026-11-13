@@ -28,20 +28,25 @@ public struct CaptionLine: Equatable, Sendable {
 /// lines of its own counts as a text and starts a new line as well; tentative
 /// text that may not, such as a mark, stays at the end of the last line. Such a
 /// row rolls a whole text off at a time, so it never shows the end of a text
-/// whose beginning is gone, unless the newest text alone is longer than the row.
-/// Of such a text the row shows the end, or, if it is told to page, the
-/// beginning first and the rest when `showMore()` is called.
+/// whose beginning is gone, unless the newest text alone is longer than the row;
+/// of such a text it shows the end.
+///
+/// A row can page instead of rolling. It then fills from the top like a page.
+/// A text that does not fit in what is left of the page starts a new page, and
+/// nothing of the old page stays, so text that is on the page never moves. A
+/// text longer than a whole page is shown from its beginning, and the rest a
+/// page at a time when `showMore()` is called.
 public struct RollingRow: Equatable, Sendable {
     public let columns: Int
     public let lines: Int
     /// Whether each text added starts on a new line.
     public let textsApart: Bool
-    /// Whether a text longer than the row is shown from its beginning, a page at
-    /// a time. Only for rows that keep texts apart.
+    /// Whether the row fills like a page and turns to a new one when a text does
+    /// not fit, instead of rolling. Only for rows that keep texts apart.
     public let pages: Bool
     /// Whether tentative text may run on to further lines, rolling the row if
     /// need be. If not, tentative text that does not fit on the line being filled
-    /// is not shown.
+    /// is not shown. Never in a row that pages.
     public let tentativeWraps: Bool
     /// How wide characters are in the font the row is drawn with.
     public let widths: GlyphWidths
@@ -57,6 +62,10 @@ public struct RollingRow: Equatable, Sendable {
     private var rolledOff = 0
     /// The lines on which the most recent texts began, when texts are kept apart.
     private var starts: [Int] = []
+    /// The first line of the page that text is being added to, in a row that
+    /// pages. The page shown, `rolledOff`, is this one or an earlier page of a
+    /// text that runs over several.
+    private var pageStart = 0
 
     public init(
         columns: Int, lines: Int, textsApart: Bool = false, pages: Bool = false, tentativeWraps: Bool = true,
@@ -66,7 +75,7 @@ public struct RollingRow: Equatable, Sendable {
         self.lines = max(lines, 1)
         self.textsApart = textsApart
         self.pages = pages && textsApart
-        self.tentativeWraps = tentativeWraps
+        self.tentativeWraps = tentativeWraps && !self.pages
         self.widths = widths
     }
 
@@ -93,6 +102,7 @@ public struct RollingRow: Equatable, Sendable {
                 }
                 starts.append(closedCount)
             }
+            let beginning = closedCount
             // The line being filled keeps what is on it: the new text is its own
             // group, so a mark at its start cannot take a character down with it.
             let cells =
@@ -106,6 +116,17 @@ public struct RollingRow: Equatable, Sendable {
             open = wrapped.popLast() ?? ""
             closed.append(contentsOf: wrapped)
             closedCount += wrapped.count
+            if pages {
+                let end = closedCount + (open.isEmpty ? 0 : 1)
+                // A text that does not fit in what is left of the page starts a
+                // new one.
+                if end - pageStart > lines { pageStart = beginning }
+                // The page on which the newest text begins is the one to show.
+                rolledOff = pageStart
+                // A text longer than a page runs on; what follows it goes on the
+                // page where it ends.
+                while end - pageStart > lines { pageStart += lines }
+            }
         }
         starts.removeFirst(max(starts.count - lines, 0))
         self.tentative = tentative.trimmed
@@ -113,16 +134,15 @@ public struct RollingRow: Equatable, Sendable {
     }
 
     /// Whether settled text below the lines shown is waiting for its turn. Only
-    /// a row that pages ever has such text.
+    /// a row that pages ever has such text: the rest of a text longer than a page.
     public var hasMore: Bool {
         pages && closedCount + openLines.count - lines > rolledOff
     }
 
-    /// Rolls on to the next lines of a text that is longer than the row, by a
-    /// whole page or as far as its end.
+    /// Turns to the next page of a text that is longer than a page.
     public mutating func showMore() {
         guard hasMore else { return }
-        rolledOff = min(rolledOff + lines, closedCount + openLines.count - lines)
+        rolledOff += lines
         forget()
     }
 
@@ -172,35 +192,30 @@ public struct RollingRow: Equatable, Sendable {
     ///
     /// A row that keeps texts apart starts at the beginning of the oldest text
     /// that still fits whole with everything after it. That follows from what
-    /// the row holds, so it comes back when tentative text shrinks or goes. A
-    /// page turned with `showMore()` stays turned while its text is the newest.
+    /// the row holds, so it comes back when tentative text shrinks or goes.
+    ///
+    /// A row that pages does not roll: its page is chosen when text is added
+    /// and when `showMore()` is called.
     private mutating func roll() {
         let total = closedCount + openLines.count
         let end = max(total - lines, 0)
         defer { forget() }
+        guard !pages else { return }
         guard textsApart else {
             rolledOff = min(max(rolledOff, end), max(total - 1, 0))
             return
         }
         var target = end
         let beginnings = starts + (tentativeIsApart ? [closedCount + 1] : [])
-        if let beginning = beginnings.filter({ $0 >= end }).min() {
-            target = beginning
-        } else if pages, let newest = starts.last {
-            // The newest text alone is longer than the row: begin at its start,
-            // or stay on the page already turned to.
-            target = rolledOff > newest && rolledOff <= end ? rolledOff : newest
-        }
+        if let beginning = beginnings.filter({ $0 >= end }).min() { target = beginning }
         rolledOff = min(target, max(total - 1, 0))
     }
 
-    /// Drops the full lines the row cannot come back to. It can come back when
-    /// tentative text shrinks or goes: by fewer lines than it shows, or, if it
-    /// pages, to the start of the newest text.
+    /// Drops the full lines the row cannot come back to. A rolling row can come
+    /// back, when tentative text shrinks or goes, by fewer lines than it shows.
+    /// A row that pages never goes back before the page it shows.
     private mutating func forget() {
-        var earliest = rolledOff
-        if pages, let newest = starts.last { earliest = min(earliest, newest) }
-        let needed = max(closedCount - earliest, 0) + lines
+        let needed = max(closedCount - rolledOff, 0) + lines
         closed.removeFirst(max(closed.count - needed, 0))
     }
 

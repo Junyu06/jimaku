@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: accepted
+status: superseded in part by 2026-11-12-turn-the-page-when-the-translation-row-is-full.md: the translation row no longer rolls a sentence off at a time, it fills like a page and starts a new one. Each sentence on a line of its own stands, and so do the rules for the original row.
 supersedes: laying one piece after another on the same line, and the rule that a row never rolls back, in 2026-11-12-lay-captions-out-in-fixed-lines-that-roll-up.md. Fixed lines, rolling by whole lines, and text that does not move sideways once shown stay as they are.
 
 # Show each sentence on a line of its own
