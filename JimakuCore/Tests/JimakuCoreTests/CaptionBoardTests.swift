@@ -381,6 +381,17 @@ struct CaptionBoardTests {
         #expect(!board.hasMore)
     }
 
+    @Test("Laid out again, a row of five lines gets five recent sentences")
+    func fiveLinesRecalled() {
+        let transcript = said([("One.", "一。"), ("Two.", "二。"), ("Three.", "三。"), ("Four.", "四。"), ("Five.", "五。")])
+        var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle(textSize: .small, lines: 5)))
+        board.show(transcript)
+        #expect(texts(board.rows[1]) == ["一。", "二。", "三。", "四。", "五。"])
+        board.relay(CaptionLayout(style: CaptionStyle(lines: 5)), showing: transcript)
+        #expect(texts(board.rows[1]) == ["一。", "二。", "三。", "四。", "五。"])
+        #expect(!board.hasMore)
+    }
+
     @Test("A translation too long for two lines needs no second page with four, and needs one again with two")
     func longTranslationAcrossLineCounts() {
         func rows(_ lines: Int) -> CaptionLayout {

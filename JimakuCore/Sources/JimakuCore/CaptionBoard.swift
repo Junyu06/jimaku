@@ -116,8 +116,9 @@ public struct CaptionBoard: Equatable, Sendable {
     /// translated.
     public static let waitingMark = "…"
 
-    /// How many recent entries are laid out again when the layout changes.
-    private static let recall = 4
+    /// How many recent entries are laid out again when the layout changes: as
+    /// many as the tallest row has lines.
+    private static let recall = CaptionStyle.lineChoices.max() ?? 2
 
     public init(layout: CaptionLayout) {
         self.layout = layout
