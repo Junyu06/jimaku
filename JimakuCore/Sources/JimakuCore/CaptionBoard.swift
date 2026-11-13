@@ -58,7 +58,7 @@ public struct CaptionLayout: Equatable, Sendable {
         self.translation = translation
     }
 
-    /// The layout for a style. On the main row thirty, twenty-five, or twenty wide
+    /// The layout for a style. On the main row twenty-seven, twenty-three, or twenty wide
     /// characters fit a line at the small, medium, and large size. The main row has as many lines as the
     /// style asks for; `CaptionFrame` makes the frame tall enough for them.
     ///
@@ -70,8 +70,8 @@ public struct CaptionLayout: Equatable, Sendable {
     public init(style: CaptionStyle, translationAvailable: Bool = true) {
         let (mainColumns, sideColumns) =
             switch style.textSize {
-            case .small: (60, 84)
-            case .medium: (50, 72)
+            case .small: (54, 76)
+            case .medium: (46, 66)
             case .large: (40, 60)
             }
         let main = Row(columns: mainColumns, lines: style.lines, role: .primary)
