@@ -242,11 +242,12 @@ struct CaptionBoardTests {
         #expect(!board.hasMore)
     }
 
-    @Test("A sentence that needs every line of its row is shown alone")
-    func longSentenceAlone() {
+    @Test("A translation that fits in what is left of the page runs on after the one before it")
+    func translationRunsOn() {
         var board = CaptionBoard(layout: layout)
         board.show(said([("Hello.", "你好。"), ("How are you today?", "你今天过得怎么样？")]))
-        #expect(texts(board.rows[1]) == ["你今天过得怎", "么样？"])
+        #expect(texts(board.rows[1]) == ["你好。你今天", "过得怎么样？"])
+        #expect(!board.hasMore)
     }
 
     @Test("Translations are settled text, and nothing else is shown as translation")

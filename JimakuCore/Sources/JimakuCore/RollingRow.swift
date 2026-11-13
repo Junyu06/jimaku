@@ -37,8 +37,6 @@ public struct CaptionLine: Equatable, Sendable {
 /// text longer than a whole page is shown from its beginning, and the rest a
 /// page at a time when `showMore()` is called. Tentative text gets no line of
 /// its own in such a row.
-///
-/// Texts that follow one another on a line can have a gap between them.
 public struct RollingRow: Equatable, Sendable {
     public let columns: Int
     public let lines: Int
@@ -47,9 +45,6 @@ public struct RollingRow: Equatable, Sendable {
     /// Whether the row fills like a page and turns to a new one when a text does
     /// not fit, instead of rolling.
     public let pages: Bool
-    /// Whether texts that follow one another on a line have a gap between them,
-    /// as wide as a wide character, so a reader can tell where one ends.
-    public let gap: Bool
     /// Whether tentative text may run on to further lines, rolling the row if
     /// need be. If not, tentative text that does not fit on the line being filled
     /// is not shown. Never in a row that pages.
@@ -74,14 +69,13 @@ public struct RollingRow: Equatable, Sendable {
     private var pageStart = 0
 
     public init(
-        columns: Int, lines: Int, textsApart: Bool = false, pages: Bool = false, gap: Bool = false,
-        tentativeWraps: Bool = true, widths: GlyphWidths = .estimated
+        columns: Int, lines: Int, textsApart: Bool = false, pages: Bool = false, tentativeWraps: Bool = true,
+        widths: GlyphWidths = .estimated
     ) {
         self.columns = max(columns, 2)
         self.lines = max(lines, 1)
         self.textsApart = textsApart
         self.pages = pages
-        self.gap = gap
         self.tentativeWraps = tentativeWraps && !pages
         self.widths = widths
     }
@@ -148,7 +142,7 @@ public struct RollingRow: Equatable, Sendable {
     private func wrap(_ text: String, after line: String) -> [String] {
         let cells =
             line.map { CaptionText.Cell(character: $0, isTentative: false, group: 0) }
-            + (joiner(between: line, and: text) + text).map {
+            + (Self.joiner(between: line, and: text) + text).map {
                 CaptionText.Cell(character: $0, isTentative: false, group: 1)
             }
         return CaptionText.wrap(cells, columns: columns, widths: widths).map { String($0.map(\.character)) }
@@ -192,7 +186,7 @@ public struct RollingRow: Equatable, Sendable {
             let own = tentative.map { CaptionText.Cell(character: $0, isTentative: true, group: 2) }
             return [settled] + CaptionText.wrap(own, columns: columns, widths: widths)
         }
-        let added = (Self.space(between: open, and: tentative) + tentative).map {
+        let added = (Self.joiner(between: open, and: tentative) + tentative).map {
             CaptionText.Cell(character: $0, isTentative: true, group: 2)
         }
         let withTentative = CaptionText.wrap(settled + added, columns: columns, widths: widths)
@@ -240,23 +234,9 @@ public struct RollingRow: Equatable, Sendable {
         closed.removeFirst(max(closed.count - needed, 0))
     }
 
-    /// What goes between a line and a text that follows on it. With a gap: two
-    /// spaces between narrow characters; one space after a wide mark, which has
-    /// blank space of its own; otherwise an ideographic space. Without a gap,
-    /// what `space(between:and:)` gives.
-    private func joiner(between first: String, and second: String) -> String {
-        guard gap, let last = first.last, let next = second.first else {
-            return Self.space(between: first, and: second)
-        }
-        let lastIsWide = CaptionText.width(of: String(last)) == 2
-        if !lastIsWide, CaptionText.width(of: String(next)) == 1 { return "  " }
-        if lastIsWide, !CaptionText.isSpoken(last) { return " " }
-        return "\u{3000}"
-    }
-
     /// A space goes between two pieces only where both sides are narrow
     /// characters, so English gets spaces and Japanese or Chinese does not.
-    private static func space(between first: String, and second: String) -> String {
+    private static func joiner(between first: String, and second: String) -> String {
         guard let last = first.last, let next = second.first,
             CaptionText.width(of: String(last)) == 1, CaptionText.width(of: String(next)) == 1
         else { return "" }

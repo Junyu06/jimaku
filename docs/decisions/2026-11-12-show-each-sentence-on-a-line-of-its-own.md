@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: superseded in part by 2026-11-12-turn-the-page-when-the-translation-row-is-full.md: on the translation row, translations follow one another with a gap, and the row fills like a page and starts a new one instead of rolling. The rules for the original row stand.
+status: superseded in part by 2026-11-12-turn-the-page-when-the-translation-row-is-full.md: the translation row fills like a page and starts a new one instead of rolling. Superseded in part by 2026-11-12-let-translations-follow-one-another-on-the-page.md: translations follow one another on a line. The rules for the original row stand.
 supersedes: laying one piece after another on the same line, and the rule that a row never rolls back, in 2026-11-12-lay-captions-out-in-fixed-lines-that-roll-up.md. Fixed lines, rolling by whole lines, and text that does not move sideways once shown stay as they are.
 
 # Show each sentence on a line of its own

@@ -93,7 +93,7 @@ public struct CaptionLayout: Equatable, Sendable {
 /// waiting mark, if there is room.
 ///
 /// On the original row every sentence starts on a new line. Translations follow
-/// one another on a line with a gap between them. A translation longer than a
+/// one another like the sentences of a paragraph. A translation longer than a
 /// whole page is shown from its beginning; `showMore()` turns to the rest.
 ///
 /// The board only ever adds to what it shows. A translation that arrives after a
@@ -117,8 +117,9 @@ public struct CaptionBoard: Equatable, Sendable {
     /// translated.
     public static let waitingMark = "…"
 
-    /// How many recent entries are laid out again when the layout changes: as
-    /// many as the tallest row has lines.
+    /// How many recent entries are laid out again when the layout changes. A
+    /// page of running text can hold more than this; the rest is not brought
+    /// back.
     private static let recall = CaptionStyle.lineChoices.max() ?? 2
 
     public init(layout: CaptionLayout) {
@@ -128,9 +129,7 @@ public struct CaptionBoard: Equatable, Sendable {
         }
         // The waiting mark never gets a line of its own.
         translationRow = layout.translation.map {
-            RollingRow(
-                columns: $0.columns, lines: $0.lines, pages: true, gap: true, tentativeWraps: false,
-                widths: $0.widths)
+            RollingRow(columns: $0.columns, lines: $0.lines, pages: true, tentativeWraps: false, widths: $0.widths)
         }
     }
 
