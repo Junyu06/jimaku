@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: superseded by 2026-11-12-make-the-caption-text-smaller-and-give-it-more-room.md. Tried on a physical iPad the same day, these sizes were reported as still too large.
+status: superseded by 2026-11-12-make-the-caption-text-smaller-and-give-it-more-room.md. Tried on a physical iPad the same day, these sizes were reported as still too large. Its frame heights included the audio meter, taken out by 2026-11-12-take-the-audio-meter-out-of-the-caption-window.md.
 supersedes: the columns by text size in 2026-11-12-lay-captions-out-in-fixed-lines-that-roll-up.md: "30, 24, or 22 columns" for the translation and "52, 46, or 42" for the original.
 
 # Make the caption text smaller at every size

@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: accepted
+status: accepted. The frame heights named below were lowered by 2026-11-12-take-the-audio-meter-out-of-the-caption-window.md, which gives the present ones.
 supersedes: "two, three, or four lines" in 2026-11-12-let-the-reader-choose-how-many-lines-the-translation-has.md. The rest of that decision stands.
 
 # Allow a fifth line of translation
