@@ -40,10 +40,40 @@ struct CaptionLayoutTests {
         #expect(layout.translation == CaptionLayout.Row(columns: 24, lines: 2, role: .primary))
     }
 
-    @Test("Small text leaves room for a third line of translation when it is alone")
-    func smallTranslationOnly() {
-        let layout = CaptionLayout(style: CaptionStyle(textSize: .small, mode: .translationOnly))
-        #expect(layout.translation?.lines == 3)
+    @Test("The translation gets as many lines as the style asks for, and the original keeps one")
+    func chosenLines() {
+        for lines in [2, 3, 4] {
+            for size in CaptionStyle.TextSize.allCases {
+                let layout = CaptionLayout(style: CaptionStyle(textSize: size, lines: lines))
+                #expect(layout.translation?.lines == lines)
+                #expect(layout.original?.lines == 1)
+            }
+        }
+    }
+
+    @Test("Alone, the translation has the lines the style asks for, at the small size as well")
+    func chosenLinesAlone() {
+        #expect(CaptionLayout(style: CaptionStyle(textSize: .small, mode: .translationOnly)).translation?.lines == 2)
+        #expect(
+            CaptionLayout(style: CaptionStyle(textSize: .small, mode: .translationOnly, lines: 4)).translation?.lines
+                == 4)
+    }
+
+    @Test("When translation cannot run, the original gets the lines the style asks for")
+    func chosenLinesWithoutTranslation() {
+        let layout = CaptionLayout(style: CaptionStyle(lines: 3), translationAvailable: false)
+        #expect(layout.original == CaptionLayout.Row(columns: 24, lines: 3, role: .primary))
+    }
+
+    @Test("A style has two to four lines, two unless told otherwise")
+    func linesOfAStyle() {
+        #expect(CaptionStyle().lines == 2)
+        #expect(CaptionStyle.lineChoices == [2, 3, 4])
+        #expect(CaptionStyle(lines: 1).lines == 2)
+        #expect(CaptionStyle(lines: 9).lines == 4)
+        var style = CaptionStyle()
+        style.lines = 7
+        #expect(style.lines == 4)
     }
 
     @Test("When translation cannot run, the original takes the main row in either mode")
@@ -307,6 +337,40 @@ struct CaptionBoardTests {
         // Nothing is added twice afterwards.
         board.show(transcript)
         #expect(board.rows[0].lines == expected)
+    }
+
+    @Test("With more lines the row shows more of the recent sentences, and with fewer again only the newest")
+    func moreAndFewerLines() {
+        let transcript = said([("One.", "一。"), ("Two.", "二。"), ("Three.", "三。"), ("Four.", "四。")])
+        var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
+        board.show(transcript)
+        #expect(texts(board.rows[1]) == ["三。", "四。"])
+        board.relay(CaptionLayout(style: CaptionStyle(lines: 4)), showing: transcript)
+        #expect(texts(board.rows[1]) == ["一。", "二。", "三。", "四。"])
+        #expect(!board.hasMore)
+        board.relay(CaptionLayout(style: CaptionStyle(lines: 2)), showing: transcript)
+        #expect(texts(board.rows[1]) == ["三。", "四。"])
+        #expect(!board.hasMore)
+    }
+
+    @Test("A translation too long for two lines needs no second page with four, and needs one again with two")
+    func longTranslationAcrossLineCounts() {
+        // Three lines of twelve wide characters at the medium size.
+        let long = String(repeating: "甲", count: 30)
+        let transcript = said([("Long.", long)])
+        var board = CaptionBoard(layout: CaptionLayout(style: CaptionStyle()))
+        board.show(transcript)
+        #expect(board.hasMore)
+        var page = board.page
+        board.relay(CaptionLayout(style: CaptionStyle(lines: 4)), showing: transcript)
+        #expect(texts(board.rows[1]).joined() == long)
+        #expect(!board.hasMore)
+        #expect(board.page > page)
+        page = board.page
+        board.relay(CaptionLayout(style: CaptionStyle(lines: 2)), showing: transcript)
+        #expect(texts(board.rows[1]).joined() == String(long.prefix(24)))
+        #expect(board.hasMore)
+        #expect(board.page > page)
     }
 
     @Test("A board with only the original row shows it as the main row")

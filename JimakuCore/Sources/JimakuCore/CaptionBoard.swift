@@ -58,8 +58,9 @@ public struct CaptionLayout: Equatable, Sendable {
         self.translation = translation
     }
 
-    /// The layout for a style. The numbers are what fits the caption frame: a wide
-    /// character on the main row is a twelfth of the width at medium size.
+    /// The layout for a style. A wide character on the main row is a twelfth of
+    /// the frame's width at medium size. The main row has as many lines as the
+    /// style asks for; `CaptionFrame` makes the frame tall enough for them.
     ///
     /// Rows start with estimated character widths; whoever draws them sets the
     /// measured widths of its font.
@@ -73,8 +74,7 @@ public struct CaptionLayout: Equatable, Sendable {
             case .medium: (24, 46)
             case .large: (22, 42)
             }
-        let alone = style.mode == .translationOnly || !translationAvailable
-        let main = Row(columns: mainColumns, lines: alone && style.textSize == .small ? 3 : 2, role: .primary)
+        let main = Row(columns: mainColumns, lines: style.lines, role: .primary)
         if !translationAvailable {
             self.init(original: main, translation: nil)
         } else if style.mode == .translationOnly {

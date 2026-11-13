@@ -45,6 +45,7 @@ final class SessionController {
         didSet {
             UserDefaults.standard.set(style.textSize.rawValue, forKey: Self.textSizeKey)
             UserDefaults.standard.set(style.mode.rawValue, forKey: Self.modeKey)
+            UserDefaults.standard.set(style.lines, forKey: Self.linesKey)
             guard style != oldValue else { return }
             refreshWindow()
         }
@@ -52,10 +53,20 @@ final class SessionController {
 
     let window = CaptionWindow()
 
+    /// The pixel size of the caption picture the window is showing. The preview
+    /// takes its shape from it.
+    var frameSize: CGSize { CaptionFrameRenderer.frameSize(height: frameHeight) }
+
+    /// The height of the frame last given to the window. It is set only where
+    /// the window is shown something, so the preview never has another shape
+    /// than the picture in it.
+    private var frameHeight = CaptionFrame.minimumHeight
+
     private static let languageKey = "sourceLanguage"
     private static let engineKey = "translationEngine"
     private static let textSizeKey = "captionTextSize"
     private static let modeKey = "captionMode"
+    private static let linesKey = "captionLines"
 
     /// How long the caption window may take to appear or to close before the session
     /// stops waiting for it.
@@ -109,7 +120,8 @@ final class SessionController {
             textSize: defaults.string(forKey: Self.textSizeKey).flatMap(CaptionStyle.TextSize.init(rawValue:))
                 ?? .medium,
             mode: defaults.string(forKey: Self.modeKey).flatMap(CaptionStyle.Mode.init(rawValue:))
-                ?? .originalAndTranslation
+                ?? .originalAndTranslation,
+            lines: defaults.object(forKey: Self.linesKey) as? Int ?? CaptionStyle().lines
         )
         #if targetEnvironment(simulator)
             recognizer = ScriptedSpeechRecognizer()
@@ -439,8 +451,10 @@ final class SessionController {
     /// for when there are none yet. Outside a session, shows a sample caption.
     private func refreshWindow() {
         let layout = layout
+        let frameHeight = CaptionFrame.height(for: layout)
+        if frameHeight != self.frameHeight { self.frameHeight = frameHeight }
         guard session.isActive else {
-            window.show(.rows(CaptionBoard.rows(for: DemoCaptions.lines(at: 0), layout: layout)))
+            window.show(.rows(CaptionBoard.rows(for: DemoCaptions.lines(at: 0), layout: layout)), frameHeight: frameHeight)
             return
         }
         if layout == board.layout {
@@ -463,9 +477,9 @@ final class SessionController {
                 mode: style.mode.effective(translationAvailable: available),
                 hasSpeech: !transcript.entries.isEmpty || !transcript.pending.isEmpty
             )
-            window.show(.notice(text(for: placeholder)))
+            window.show(.notice(text(for: placeholder)), frameHeight: frameHeight)
         } else {
-            window.show(.rows(board.rows))
+            window.show(.rows(board.rows), frameHeight: frameHeight)
         }
     }
 
