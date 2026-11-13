@@ -437,6 +437,15 @@ struct RollingRowTests {
         #expect(texts(narrow) == ["Hi.  Bye."])
     }
 
+    @Test("After a wide mark, which has blank space of its own, the gap is one narrow space")
+    func gapAfterAWideMark() {
+        var row = flowing(columns: 20, lines: 2)
+        row.append("一。")
+        row.append("二？")
+        row.append("三")
+        #expect(texts(row) == ["一。 二？ 三"])
+    }
+
     @Test("A gap is not kept where a line ends")
     func noGapAtALineEnd() {
         var row = flowing(lines: 2)
@@ -488,8 +497,8 @@ struct RollingRowTests {
         #expect(row.visible == [CaptionLine(settled: "一二", tentative: "…")])
         row.append("三四五")
         #expect(texts(row) == ["一二\u{3000}三四", "五…"])
-        row.append("六七八九")
-        #expect(texts(row) == ["六七八九"])
+        row.append("六七八九十")
+        #expect(texts(row) == ["六七八九十"])
     }
 
     @Test("A flowing row that rolls instead of paging is as it was: no gap unless asked for")

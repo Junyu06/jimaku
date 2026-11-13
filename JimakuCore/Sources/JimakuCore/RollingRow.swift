@@ -35,15 +35,21 @@ public struct CaptionLine: Equatable, Sendable {
 /// A text that does not fit in what is left of the page starts a new page, and
 /// nothing of the old page stays, so text that is on the page never moves. A
 /// text longer than a whole page is shown from its beginning, and the rest a
-/// page at a time when `showMore()` is called.
+/// page at a time when `showMore()` is called. Tentative text gets no line of
+/// its own in such a row.
+///
+/// Texts that follow one another on a line can have a gap between them.
 public struct RollingRow: Equatable, Sendable {
     public let columns: Int
     public let lines: Int
     /// Whether each text added starts on a new line.
     public let textsApart: Bool
     /// Whether the row fills like a page and turns to a new one when a text does
-    /// not fit, instead of rolling. Only for rows that keep texts apart.
+    /// not fit, instead of rolling.
     public let pages: Bool
+    /// Whether texts that follow one another on a line have a gap between them,
+    /// as wide as a wide character, so a reader can tell where one ends.
+    public let gap: Bool
     /// Whether tentative text may run on to further lines, rolling the row if
     /// need be. If not, tentative text that does not fit on the line being filled
     /// is not shown. Never in a row that pages.
@@ -68,14 +74,15 @@ public struct RollingRow: Equatable, Sendable {
     private var pageStart = 0
 
     public init(
-        columns: Int, lines: Int, textsApart: Bool = false, pages: Bool = false, tentativeWraps: Bool = true,
-        widths: GlyphWidths = .estimated
+        columns: Int, lines: Int, textsApart: Bool = false, pages: Bool = false, gap: Bool = false,
+        tentativeWraps: Bool = true, widths: GlyphWidths = .estimated
     ) {
         self.columns = max(columns, 2)
         self.lines = max(lines, 1)
         self.textsApart = textsApart
-        self.pages = pages && textsApart
-        self.tentativeWraps = tentativeWraps && !self.pages
+        self.pages = pages
+        self.gap = gap
+        self.tentativeWraps = tentativeWraps && !pages
         self.widths = widths
     }
 
@@ -95,24 +102,18 @@ public struct RollingRow: Equatable, Sendable {
     public mutating func update(appending texts: [String], tentative: String) {
         for text in texts.map(\.trimmed) where !text.isEmpty {
             if textsApart {
-                if !open.isEmpty {
-                    closed.append(open)
-                    closedCount += 1
-                    open = ""
-                }
+                closeOpenLine()
                 starts.append(closedCount)
             }
-            let beginning = closedCount
-            // The line being filled keeps what is on it: the new text is its own
-            // group, so a mark at its start cannot take a character down with it.
-            let cells =
-                open.map { CaptionText.Cell(character: $0, isTentative: false, group: 0) }
-                + (Self.joiner(between: open, and: text) + text).map {
-                    CaptionText.Cell(character: $0, isTentative: false, group: 1)
-                }
-            var wrapped = CaptionText.wrap(cells, columns: columns, widths: widths).map {
-                String($0.map(\.character))
+            var wrapped = wrap(text, after: open)
+            if pages, !open.isEmpty, closedCount + wrapped.count - pageStart > lines {
+                // Run on from the line being filled, the text would not fit in
+                // what is left of the page. It starts on a line of its own, and
+                // that line is the top of a new page.
+                closeOpenLine()
+                wrapped = wrap(text, after: "")
             }
+            let beginning = closedCount
             open = wrapped.popLast() ?? ""
             closed.append(contentsOf: wrapped)
             closedCount += wrapped.count
@@ -131,6 +132,26 @@ public struct RollingRow: Equatable, Sendable {
         starts.removeFirst(max(starts.count - lines, 0))
         self.tentative = tentative.trimmed
         roll()
+    }
+
+    /// Ends the line being filled, if there is anything on it.
+    private mutating func closeOpenLine() {
+        guard !open.isEmpty else { return }
+        closed.append(open)
+        closedCount += 1
+        open = ""
+    }
+
+    /// The lines that `line` and `text` after it make. The line keeps what is on
+    /// it: the new text is its own group, so a mark at its start cannot take a
+    /// character down with it.
+    private func wrap(_ text: String, after line: String) -> [String] {
+        let cells =
+            line.map { CaptionText.Cell(character: $0, isTentative: false, group: 0) }
+            + (joiner(between: line, and: text) + text).map {
+                CaptionText.Cell(character: $0, isTentative: false, group: 1)
+            }
+        return CaptionText.wrap(cells, columns: columns, widths: widths).map { String($0.map(\.character)) }
     }
 
     /// Whether settled text below the lines shown is waiting for its turn. Only
@@ -171,7 +192,7 @@ public struct RollingRow: Equatable, Sendable {
             let own = tentative.map { CaptionText.Cell(character: $0, isTentative: true, group: 2) }
             return [settled] + CaptionText.wrap(own, columns: columns, widths: widths)
         }
-        let added = (Self.joiner(between: open, and: tentative) + tentative).map {
+        let added = (Self.space(between: open, and: tentative) + tentative).map {
             CaptionText.Cell(character: $0, isTentative: true, group: 2)
         }
         let withTentative = CaptionText.wrap(settled + added, columns: columns, widths: widths)
@@ -219,9 +240,23 @@ public struct RollingRow: Equatable, Sendable {
         closed.removeFirst(max(closed.count - needed, 0))
     }
 
+    /// What goes between a line and a text that follows on it. With a gap: two
+    /// spaces between narrow characters; one space after a wide mark, which has
+    /// blank space of its own; otherwise an ideographic space. Without a gap,
+    /// what `space(between:and:)` gives.
+    private func joiner(between first: String, and second: String) -> String {
+        guard gap, let last = first.last, let next = second.first else {
+            return Self.space(between: first, and: second)
+        }
+        let lastIsWide = CaptionText.width(of: String(last)) == 2
+        if !lastIsWide, CaptionText.width(of: String(next)) == 1 { return "  " }
+        if lastIsWide, !CaptionText.isSpoken(last) { return " " }
+        return "\u{3000}"
+    }
+
     /// A space goes between two pieces only where both sides are narrow
     /// characters, so English gets spaces and Japanese or Chinese does not.
-    private static func joiner(between first: String, and second: String) -> String {
+    private static func space(between first: String, and second: String) -> String {
         guard let last = first.last, let next = second.first,
             CaptionText.width(of: String(last)) == 1, CaptionText.width(of: String(next)) == 1
         else { return "" }

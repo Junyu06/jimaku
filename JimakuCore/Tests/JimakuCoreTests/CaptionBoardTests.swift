@@ -139,7 +139,7 @@ struct CaptionBoardTests {
         var board = CaptionBoard(layout: roomy)
         board.show(said([("Hello.", "你好。"), ("Bye.", "再见。")]))
         #expect(texts(board.rows[0]) == ["Hello.", "Bye."])
-        #expect(texts(board.rows[1]) == ["你好。\u{3000}再见。"])
+        #expect(texts(board.rows[1]) == ["你好。 再见。"])
     }
 
     @Test("A translation longer than its row is shown from its beginning, then the rest")
@@ -165,11 +165,11 @@ struct CaptionBoardTests {
             board.show(transcript)
         }
         add("Two.", "二。", at: 1)
-        #expect(texts(board.rows[1]) == ["一。\u{3000}二。"])
+        #expect(texts(board.rows[1]) == ["一。 二。"])
         add("Three.", "三。", at: 2)
-        #expect(texts(board.rows[1]) == ["一。\u{3000}二。", "三。"])
+        #expect(texts(board.rows[1]) == ["一。 二。", "三。"])
         add("Four.", "四。", at: 3)
-        #expect(texts(board.rows[1]) == ["一。\u{3000}二。", "三。\u{3000}四。"])
+        #expect(texts(board.rows[1]) == ["一。 二。", "三。 四。"])
         add("Five.", "五。", at: 4)
         #expect(texts(board.rows[1]) == ["五。"])
         #expect(!board.hasMore)
@@ -362,7 +362,7 @@ struct CaptionBoardTests {
         board.relay(wide, showing: transcript)
         #expect(board.rows.map(\.role) == [.primary])
         // "Fine" is still waiting to be translated.
-        let expected = [CaptionLine(settled: "你好。\u{3000}你好吗？", tentative: "…")]
+        let expected = [CaptionLine(settled: "你好。 你好吗？", tentative: "…")]
         #expect(board.rows[0].lines == expected)
         // Nothing is added twice afterwards.
         board.show(transcript)

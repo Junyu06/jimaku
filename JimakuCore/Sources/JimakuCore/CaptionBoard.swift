@@ -92,8 +92,9 @@ public struct CaptionLayout: Equatable, Sendable {
 /// with it. While speech is waiting to be translated the row ends with a
 /// waiting mark, if there is room.
 ///
-/// Every sentence starts on a new line. A translation longer than a whole page
-/// is shown from its beginning; `showMore()` turns to the rest.
+/// On the original row every sentence starts on a new line. Translations follow
+/// one another on a line with a gap between them. A translation longer than a
+/// whole page is shown from its beginning; `showMore()` turns to the rest.
 ///
 /// The board only ever adds to what it shows. A translation that arrives after a
 /// later one is already on the row is left out of the window; putting it in the
@@ -128,7 +129,7 @@ public struct CaptionBoard: Equatable, Sendable {
         // The waiting mark never gets a line of its own.
         translationRow = layout.translation.map {
             RollingRow(
-                columns: $0.columns, lines: $0.lines, textsApart: true, pages: true, tentativeWraps: false,
+                columns: $0.columns, lines: $0.lines, pages: true, gap: true, tentativeWraps: false,
                 widths: $0.widths)
         }
     }
