@@ -121,4 +121,22 @@ struct PauseDetectorTests {
         #expect(!PauseDetector.hasSpeech(before: 5.34, heardTo: 5.34 - PauseDetector.pauseInLongSpeech))
         #expect(!PauseDetector.hasSpeech(before: 5.34, heardTo: 4))
     }
+
+    @Test("Hearing to the end of the speech is not enough at the shortest pause, hearing a little into its quiet is")
+    func shortestPauseHeardInto() {
+        var detector = PauseDetector(sampleRate: Self.rate)
+        // Long speech, so 0.2 seconds of quiet make the pause, at 3.2 seconds.
+        let places = detector.take(sound(3) + quiet(0.1)) + detector.take(quiet(0.1)).map { $0 + 49_600 }
+        #expect(places == [51_200])
+        let pause = Double(places[0]) / Double(Self.rate)
+        #expect(!PauseDetector.hasSpeech(before: pause, heardTo: 3.0))
+        #expect(!PauseDetector.hasSpeech(before: pause, heardTo: 3.03))
+        #expect(PauseDetector.hasSpeech(before: pause, heardTo: 3.05))
+    }
+
+    @Test("What a recognizer may lack before a pause is between 0.15 and 0.17 seconds")
+    func whatMayBeLacking() {
+        #expect(PauseDetector.hasSpeech(before: 10, heardTo: 10 - 0.15))
+        #expect(!PauseDetector.hasSpeech(before: 10, heardTo: 10 - 0.17))
+    }
 }

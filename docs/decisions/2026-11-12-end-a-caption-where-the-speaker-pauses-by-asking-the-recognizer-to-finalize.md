@@ -35,7 +35,7 @@ Cost accepted:
 - Sounds that are not speech but are loud and short, such as a knock, cause a request to finalize. Nothing is shown for them unless the recognizer hears words.
 - Audio waiting to go to the analyzer is kept without a limit. An analyzer that stays behind for long makes that grow; this was not seen and is not guarded against.
 
-Status of evidence: the pause detector, the cutting of final results, and the rows are covered by unit tests. The numbers above are from a Mac, with a 145-second recording of quick Japanese conversation played at its own speed into the app's recognizer class, the pause detector, the transcript, and language-pack translation. The recording is not in the repository. Seen in an iPad simulator with scripted speech. Not yet run on a physical device, where the audio arrives through a screen broadcast.
+Status of evidence when this was first written: the pause detector, the cutting of final results, and the rows are covered by unit tests. The numbers above are from a Mac, with a 145-second recording of quick Japanese conversation played at its own speed into the app's recognizer class, the pause detector, the transcript, and language-pack translation. The recording is not in the repository. Seen in an iPad simulator with scripted speech. Not yet run on a physical device, where the audio arrives through a screen broadcast.
 
 Evidence added 2026-11-12, from a physical iPad with the audio arriving through a screen broadcast:
 

@@ -8,7 +8,7 @@
 
 Asked to finalize while its range was that short, the analyzer still returned a final result for the speech before the pause within 0.08 seconds.
 
-So a rule of the form "the analyzer has taken the audio in once its volatile range ends at it" never holds during a broadcast. A rule about the analyzer that was measured only with audio from a file was taken to hold for the broadcast as well; it failed at every pause there, and nothing showed it until a session on the device was logged.
+So a rule of the form "the analyzer has taken the audio in once its volatile range ends at it" did not hold at any pause in the broadcast sessions that were logged. A rule about the analyzer that was measured only with audio from a file was taken to hold for the broadcast as well; it failed at every pause there, and nothing showed it until a session on the device was logged.
 
 What to do instead:
 
