@@ -139,4 +139,60 @@ struct PauseDetectorTests {
         #expect(PauseDetector.hasSpeech(before: 10, heardTo: 10 - 0.15))
         #expect(!PauseDetector.hasSpeech(before: 10, heardTo: 10 - 0.17))
     }
+
+    // MARK: Possible pauses
+
+    private func events(in batches: [[Int16]]) -> [[PauseDetector.Pause]] {
+        var detector = PauseDetector(sampleRate: Self.rate)
+        return batches.map { detector.events(in: $0) }
+    }
+
+    @Test("Quiet after speech is a possible pause at 0.2 seconds and a certain one at 0.3")
+    func possibleThenCertain() {
+        #expect(
+            events(in: [sound(1) + quiet(0.5)]) == [[
+                PauseDetector.Pause(place: 19_200, isCertain: false),
+                PauseDetector.Pause(place: 20_800, isCertain: true),
+            ]])
+    }
+
+    @Test("Speech that goes on before the pause is certain leaves it a possible pause, and the next quiet starts over")
+    func possibleOnly() {
+        let found = events(in: [sound(1) + quiet(0.24) + sound(1), quiet(0.5)])
+        #expect(found[0] == [PauseDetector.Pause(place: 19_200, isCertain: false)])
+        #expect(found[1].map(\.isCertain) == [false, true])
+    }
+
+    @Test("After long speech the pause is possible and certain at the same place, in that order")
+    func possibleAndCertainTogether() {
+        #expect(
+            events(in: [sound(3) + quiet(0.3)]) == [[
+                PauseDetector.Pause(place: 51_200, isCertain: false),
+                PauseDetector.Pause(place: 51_200, isCertain: true),
+            ]])
+    }
+
+    @Test("A gap shorter than 0.2 seconds is no pause of either kind")
+    func shortGapIsNothing() {
+        #expect(events(in: [sound(1) + quiet(0.18) + sound(1)]) == [[]])
+    }
+
+    @Test("A click followed by quiet is no possible pause")
+    func clickIsNoPossiblePause() {
+        #expect(events(in: [sound(0.04) + quiet(1)]) == [[]])
+    }
+
+    @Test("A possible pause is reported once in one stretch of quiet, also across batches")
+    func possibleOnce() {
+        let found = events(in: [sound(1) + quiet(0.2), quiet(0.04), quiet(0.04), quiet(0.04)])
+        #expect(found.map { $0.map(\.isCertain) } == [[false], [], [], [true]])
+    }
+
+    @Test("The places of certain pauses are what take gives")
+    func takeGivesCertainPauses() {
+        var one = PauseDetector(sampleRate: Self.rate)
+        var other = PauseDetector(sampleRate: Self.rate)
+        let audio = sound(1) + quiet(0.24) + sound(1) + quiet(0.5) + sound(3) + quiet(0.3)
+        #expect(one.take(audio) == other.events(in: audio).filter(\.isCertain).map(\.place))
+    }
 }
