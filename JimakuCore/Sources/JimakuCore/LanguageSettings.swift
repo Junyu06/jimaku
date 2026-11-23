@@ -90,10 +90,18 @@ public struct LanguageSettings: Equatable, Sendable {
         return CaptionLanguage.all.filter { offered.contains($0) || $0 == pair.target }
     }
 
-    /// The engines to offer for the pair, with the one in use always among them.
+    /// The engines that can translate the pair, with the one in use always
+    /// among them.
     public var engineChoices: [TranslationEngine] {
         let usable = support?.engines(for: pair) ?? []
         return TranslationEngine.allCases.filter { usable.contains($0) || $0 == engine }
+    }
+
+    /// What keeps `engine` from translating the pair in use, or nil when it
+    /// can or the device has not answered yet. The settings list every engine,
+    /// and one that has something in its way cannot be chosen.
+    public func obstacle(to engine: TranslationEngine) -> EngineObstacle? {
+        support?.obstacle(to: engine, for: pair)
     }
 
     // MARK: Choosing

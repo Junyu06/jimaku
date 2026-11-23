@@ -26,6 +26,21 @@ extension CaptionLanguage {
     }
 }
 
+extension LanguageSupport {
+    /// Fills in what the on-device language model reports. A device that can
+    /// never run it is marked so; one where it is switched off or still being
+    /// downloaded is not, and starting a session there says what to do.
+    @MainActor
+    fileprivate mutating func takeModel() {
+        let model = SystemLanguageModel.default
+        if case .unavailable(.deviceNotEligible) = model.availability {
+            deviceRunsModel = false
+            return
+        }
+        modelLanguages = Set(CaptionLanguage.all.filter { model.supportsLocale(Locale(identifier: $0.identifier)) })
+    }
+}
+
 #if !targetEnvironment(simulator)
     /// What the system's speech recognizer, translation language packs, and
     /// language model report on this device.
@@ -62,26 +77,22 @@ extension CaptionLanguage {
                 }
             }
 
-            // A device that can never run the model is not offered it. One where
-            // it is switched off or still downloading is: starting says what to do.
-            let model = SystemLanguageModel.default
-            if case .unavailable(.deviceNotEligible) = model.availability {
-                return support
-            }
-            support.modelLanguages = Set(
-                CaptionLanguage.all.filter { model.supportsLocale(Locale(identifier: $0.identifier)) })
+            support.takeModel()
             return support
         }
     }
 #else
     /// The simulator has no speech recognition and no language packs to ask
-    /// about, and its captions are scripted. Every language is reported as ready,
-    /// so the settings can be tried. Simulator only.
+    /// about, and its captions are scripted. Every language is reported as
+    /// recognized and every pack as installed, so the settings can be tried.
+    /// The language model is the host Mac's, and is asked as on a device.
+    /// Simulator only.
     @MainActor
     final class ScriptedLanguageSupport: LanguageSupportSource {
         func support() async -> LanguageSupport {
             let spoken = CaptionLanguage.all.filter(\.canBeSpoken)
-            var support = LanguageSupport(recognizable: Set(spoken), modelLanguages: Set(CaptionLanguage.all))
+            var support = LanguageSupport(recognizable: Set(spoken))
+            support.takeModel()
             for language in spoken {
                 for target in CaptionLanguage.all {
                     let pair = LanguagePair(spoken: language, target: target)

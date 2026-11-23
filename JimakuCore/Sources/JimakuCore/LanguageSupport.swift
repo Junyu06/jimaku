@@ -6,6 +6,18 @@ public enum LanguagePackStatus: Equatable, Sendable {
     case unsupported
 }
 
+/// Why an engine cannot translate a pair on this device.
+public enum EngineObstacle: Equatable, Sendable {
+    /// The device can never run the on-device language model.
+    case deviceCannotRunModel
+    /// The language model does not work in this language.
+    case modelLacksLanguage(CaptionLanguage)
+    /// The system has no language pack for the pair.
+    case noLanguagePack
+    /// Both sides are forms of one language, which nothing translates.
+    case sameLanguage
+}
+
 /// What this device can do with the languages, as the system reported it.
 ///
 /// The app asks the system and fills this in; the rules for what to offer are
@@ -18,15 +30,20 @@ public struct LanguageSupport: Equatable, Sendable {
     /// The languages the on-device language model works in. Empty when the
     /// device has no such model.
     public var modelLanguages: Set<CaptionLanguage>
+    /// False on a device that can never run the on-device language model. One
+    /// where the model is switched off or still being downloaded can run it.
+    public var deviceRunsModel: Bool
 
     public init(
         recognizable: Set<CaptionLanguage> = [],
         packs: [LanguagePair: LanguagePackStatus] = [:],
-        modelLanguages: Set<CaptionLanguage> = []
+        modelLanguages: Set<CaptionLanguage> = [],
+        deviceRunsModel: Bool = true
     ) {
         self.recognizable = recognizable
         self.packs = packs
         self.modelLanguages = modelLanguages
+        self.deviceRunsModel = deviceRunsModel
     }
 
     public func packStatus(for pair: LanguagePair) -> LanguagePackStatus {
@@ -36,13 +53,22 @@ public struct LanguageSupport: Equatable, Sendable {
     /// The engines that can translate `pair`, language packs first. A pack that
     /// still has to be downloaded counts: the app offers the download.
     public func engines(for pair: LanguagePair) -> [TranslationEngine] {
-        guard pair.isTranslatable else { return [] }
-        var engines: [TranslationEngine] = []
-        if packStatus(for: pair) != .unsupported { engines.append(.languagePack) }
-        if modelLanguages.contains(pair.spoken), modelLanguages.contains(pair.target) {
-            engines.append(.appleIntelligence)
+        [.languagePack, .appleIntelligence].filter { obstacle(to: $0, for: pair) == nil }
+    }
+
+    /// What keeps `engine` from translating `pair`, or nil when it can. The
+    /// settings list an engine that cannot be used with this as the reason.
+    public func obstacle(to engine: TranslationEngine, for pair: LanguagePair) -> EngineObstacle? {
+        guard pair.isTranslatable else { return .sameLanguage }
+        switch engine {
+        case .languagePack:
+            return packStatus(for: pair) == .unsupported ? .noLanguagePack : nil
+        case .appleIntelligence:
+            guard deviceRunsModel else { return .deviceCannotRunModel }
+            // The spoken language first: it is the one the user picked the
+            // video by.
+            return [pair.spoken, pair.target].first { !modelLanguages.contains($0) }.map { .modelLacksLanguage($0) }
         }
-        return engines
     }
 
     /// Whether a session can run with `pair`: the device recognizes the spoken
