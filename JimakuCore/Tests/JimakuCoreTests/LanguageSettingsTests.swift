@@ -27,6 +27,13 @@ struct LanguageSettingsTests {
         )
     }
 
+    /// The same device without a language model, so only the packs translate.
+    private var packsOnly: LanguageSupport {
+        var device = device
+        device.modelLanguages = []
+        return device
+    }
+
     // MARK: Before the device has answered
 
     @Test("Before the device has answered, the choice stands and is the only thing offered")
@@ -126,7 +133,7 @@ struct LanguageSettingsTests {
     func choosingKeepsTheOtherSideOfTheChoice() {
         // The device can do English and Japanese into Simplified Chinese only.
         var settings = settings(LanguagePair(spoken: .english, target: .french))
-        settings.take(device, asked: settings.beginAsking())
+        settings.take(packsOnly, asked: settings.beginAsking())
         #expect(settings.pair == toChinese(.english))
 
         settings.choose(spoken: .japanese)
@@ -134,7 +141,7 @@ struct LanguageSettingsTests {
         #expect(settings.chosen == LanguagePair(spoken: .japanese, target: .french))
 
         // Japanese into French becomes possible: French comes back.
-        var better = device
+        var better = packsOnly
         better.packs[LanguagePair(spoken: .japanese, target: .french)] = .installed
         settings.take(better, asked: settings.beginAsking())
         #expect(settings.pair == LanguagePair(spoken: .japanese, target: .french))
@@ -154,7 +161,7 @@ struct LanguageSettingsTests {
     @Test("Choosing the language that is shown on the other side swaps what is shown")
     func choosingSwapsWhatIsShown() {
         // Chosen English into French, shown English into Simplified Chinese.
-        var device = device
+        var device = packsOnly
         device.recognizable.insert(.simplifiedChinese)
         device.packs[LanguagePair(spoken: .simplifiedChinese, target: .english)] = .installed
         var settings = settings(LanguagePair(spoken: .english, target: .french))
@@ -168,7 +175,7 @@ struct LanguageSettingsTests {
     @Test("Choosing a spoken language of the family of a target that has given way does not leave the choice untranslatable")
     func choosingTheHiddenTargetsLanguage() {
         // Chosen English into French, shown English into Simplified Chinese.
-        var device = device
+        var device = packsOnly
         device.recognizable.insert(.french)
         device.packs[toChinese(.french)] = .installed
         var settings = settings(LanguagePair(spoken: .english, target: .french))

@@ -77,13 +77,21 @@ public struct LanguageSupport: Equatable, Sendable {
     }
 
     /// `pair`, or the nearest pair this device can do. The side to keep is the
-    /// one the user just chose: the other one gives way first. A side the device
-    /// cannot do at all gives way too, and a device that reports nothing leaves
-    /// the pair as it is.
-    public func settled(_ pair: LanguagePair, keeping side: Side) -> LanguagePair {
+    /// one the user just chose: the other one gives way first, to `other` if
+    /// the device can do that, else to the first language it can. A side the
+    /// device cannot do at all gives way too, and a device that reports nothing
+    /// leaves the pair as it is.
+    public func settled(
+        _ pair: LanguagePair,
+        keeping side: Side,
+        preferring other: CaptionLanguage? = nil
+    ) -> LanguagePair {
         guard !canCaption(pair) else { return pair }
-        let withSpoken = targets(for: pair.spoken).first.map { LanguagePair(spoken: pair.spoken, target: $0) }
-        let withTarget = spoken(for: pair.target).first.map { LanguagePair(spoken: $0, target: pair.target) }
+        func pick(_ choices: [CaptionLanguage]) -> CaptionLanguage? {
+            other.flatMap { choices.contains($0) ? $0 : nil } ?? choices.first
+        }
+        let withSpoken = pick(targets(for: pair.spoken)).map { LanguagePair(spoken: pair.spoken, target: $0) }
+        let withTarget = pick(spoken(for: pair.target)).map { LanguagePair(spoken: $0, target: pair.target) }
         let any = spokenChoices.first.flatMap { spoken in
             targets(for: spoken).first.map { LanguagePair(spoken: spoken, target: $0) }
         }

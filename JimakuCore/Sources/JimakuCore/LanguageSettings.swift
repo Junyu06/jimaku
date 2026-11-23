@@ -12,8 +12,13 @@ public struct LanguageSettings: Equatable, Sendable {
     public var chosenEngine: TranslationEngine
 
     /// The side the user chose last. When the device cannot do the pair, the
-    /// other side gives way first.
-    public private(set) var kept: LanguageSupport.Side = .spoken
+    /// other side gives way first. Stored with the choice.
+    public private(set) var kept: LanguageSupport.Side
+
+    /// What was shown on the other side when the user last chose. When that
+    /// side has to give way, it goes back to this if the device can do it, so
+    /// choosing one side does not change the other on screen without need.
+    private var shownBefore: CaptionLanguage?
 
     /// What the device can do. Nil until the system has answered.
     public private(set) var support: LanguageSupport?
@@ -26,16 +31,24 @@ public struct LanguageSettings: Equatable, Sendable {
     private var asked = 0
     private var answered = 0
 
-    public init(chosen: LanguagePair, engine: TranslationEngine) {
+    public init(chosen: LanguagePair, engine: TranslationEngine, kept: LanguageSupport.Side = .spoken) {
         self.chosen = chosen
         self.chosenEngine = engine
+        self.kept = kept
     }
 
     // MARK: What is in use
 
     /// The pair a session uses: the chosen one, or the nearest the device can do.
     public var pair: LanguagePair {
-        locked ?? support?.settled(chosen, keeping: kept) ?? chosen
+        locked ?? support?.settled(chosen, keeping: kept, preferring: shownBefore) ?? chosen
+    }
+
+    /// Whether a session can start: the device can do the pair, or has not
+    /// answered yet. A device that has answered and cannot do any pair leaves
+    /// the choice as it is, and nothing to start with.
+    public var canStart: Bool {
+        support.map { $0.canCaption(pair) } ?? true
     }
 
     /// The engine that translates the pair: the chosen one, or the other when
@@ -77,20 +90,38 @@ public struct LanguageSettings: Equatable, Sendable {
 
     // MARK: Choosing
 
-    /// Chooses the spoken language, starting from the pair in use. Choosing the
-    /// target's language swaps the two. Does nothing while a session runs.
+    /// Chooses the spoken language. Choosing the language shown as the target
+    /// swaps the two that are shown. Otherwise only the spoken side of the
+    /// choice changes: a target that has given way stays chosen and comes back
+    /// when the device can do it. Does nothing while a session runs.
     public mutating func choose(spoken: CaptionLanguage) {
-        guard locked == nil else { return }
-        chosen = pair.choosing(spoken: spoken)
+        guard locked == nil, let spoken = spoken.spokenForm else { return }
+        let shown = pair
+        if spoken.family == shown.target.family {
+            chosen = shown.choosing(spoken: spoken)
+        } else {
+            var next = LanguagePair(spoken: spoken, target: chosen.target)
+            // The chosen target is of this family and has given way to the one shown.
+            if !next.isTranslatable { next.target = shown.target }
+            chosen = next
+        }
         kept = .spoken
+        shownBefore = shown.target
     }
 
-    /// Chooses the target, starting from the pair in use. Does nothing while a
-    /// session runs.
+    /// Chooses the target, the same way.
     public mutating func choose(target: CaptionLanguage) {
         guard locked == nil else { return }
-        chosen = pair.choosing(target: target)
+        let shown = pair
+        if target.family == shown.spoken.family {
+            chosen = shown.choosing(target: target)
+        } else {
+            var next = LanguagePair(spoken: chosen.spoken, target: target)
+            if !next.isTranslatable { next.spoken = shown.spoken }
+            chosen = next
+        }
         kept = .target
+        shownBefore = shown.spoken
     }
 
     // MARK: A running session
@@ -146,12 +177,16 @@ public struct LanguageSettings: Equatable, Sendable {
     ///
     /// It has to when the engine in use is no longer the one it was prepared
     /// with. And it has to when it uses language packs, is not ready, and the
-    /// pack is installed now and was not known to be when it was prepared: it
-    /// is then either failing for want of the pack or still being prepared by a
-    /// request that may have been told the pack was missing.
-    public func needsPreparingAgain(after earlier: Preparation, isReady: Bool) -> Bool {
+    /// pack is installed now, if the pack was not known to be installed when
+    /// it was prepared, or if preparing it failed for want of the pack whatever
+    /// was known: it is then either failing for want of the pack or still being
+    /// prepared by a request that may have been told the pack was missing.
+    ///
+    /// - Parameter missedPack: preparing it failed because the pack was missing.
+    public func needsPreparingAgain(after earlier: Preparation, isReady: Bool, missedPack: Bool) -> Bool {
         if engine != earlier.engine { return true }
-        return engine == .languagePack && !isReady && packStatus == .installed && earlier.pack != .installed
+        guard engine == .languagePack, !isReady, packStatus == .installed else { return false }
+        return earlier.pack != .installed || missedPack
     }
 }
 
