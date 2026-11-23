@@ -347,6 +347,14 @@ struct ClosingUpMarksTests {
         #expect(CaptionText.closingUpMarks("书名 《新年》 很长") == "书名 《新年》 很长")
     }
 
+    @Test("A space before a wide bracket that opens, or before a wide character that is no mark, stays")
+    func otherWideCharacters() {
+        #expect(CaptionText.closingUpMarks("见 ［注］ 和 ｛例｝") == "见 ［注］ 和 ｛例｝")
+        #expect(CaptionText.closingUpMarks("太好了 😀") == "太好了 😀")
+        #expect(CaptionText.closingUpMarks("一共 １００ 元") == "一共 １００ 元")
+        #expect(CaptionText.closingUpMarks("他说 ——不行") == "他说 ——不行")
+    }
+
     @Test("Narrow marks and ordinary spaces are left alone")
     func narrow() {
         #expect(CaptionText.closingUpMarks("Well , I think so.") == "Well , I think so.")

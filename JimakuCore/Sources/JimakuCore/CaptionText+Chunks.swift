@@ -61,7 +61,8 @@ extension CaptionText {
 
     /// `text` without the spaces that stand before a wide mark closing a phrase.
     /// The recognizer writes Chinese with a space before each comma and full
-    /// stop. Only spaces go, so the spoken characters and their order stay.
+    /// stop. Only spaces go, so the spoken characters and their order stay. A
+    /// mark at the very start keeps the spaces before it.
     public static func closingUpMarks(_ text: String) -> String {
         var result: [Character] = []
         var spaces: [Character] = []
@@ -70,12 +71,21 @@ extension CaptionText {
                 spaces.append(character)
                 continue
             }
-            let closes = width(of: character) == 2 && !isSpoken(character) && !openers.contains(character)
-            if !closes || result.isEmpty { result += spaces }
+            if !closesPhrase(character) || result.isEmpty { result += spaces }
             spaces.removeAll(keepingCapacity: true)
             result.append(character)
         }
         return String(result + spaces)
+    }
+
+    /// Whether a character is a wide mark that closes what stands before it: a
+    /// comma, a full stop, a closing bracket or quote. Brackets that open, dashes,
+    /// symbols, and emoji are not.
+    private static func closesPhrase(_ character: Character) -> Bool {
+        guard width(of: character) == 2, !openers.contains(character),
+            let category = character.unicodeScalars.first?.properties.generalCategory
+        else { return false }
+        return category == .otherPunctuation || category == .closePunctuation || category == .finalPunctuation
     }
 
     /// Cuts pieces off the front of `text`, each a sentence, a clause, or a run of
