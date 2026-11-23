@@ -25,8 +25,15 @@ final class SessionController {
 
     /// A message for the user when something went wrong. Nil when all is well.
     var notice: String? {
-        windowNotice ?? cannotStartNotice ?? recognitionNotice ?? packFailures[languages]
+        windowNotice ?? cannotStartNotice ?? recognitionNotice ?? packFailure
             ?? translationNotice.map { $0 + engineHint }
+    }
+
+    /// Why the language pack of the pair in use did not arrive. It matters only
+    /// while the language-pack engine is the one in use; with the other engine
+    /// it would hide what that engine has to say.
+    private var packFailure: String? {
+        settings.engine == .languagePack ? packFailures[languages] : nil
     }
 
     /// Shown after a start was refused, for as long as the device still can do
@@ -265,7 +272,9 @@ final class SessionController {
                 await self.ask().value
                 guard self.settings.support?.packStatus(for: pair) == .downloadable else { break }
             }
-            self?.packWatches[pair] = nil
+            // A watch that was replaced by a newer one for the same pair
+            // leaves the newer one in place.
+            if !Task.isCancelled { self?.packWatches[pair] = nil }
         }
     }
 
