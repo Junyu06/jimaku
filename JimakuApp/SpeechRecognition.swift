@@ -80,22 +80,24 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         // then a final version, which is what Transcript expects.
         let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
 
-        // Download the language's model if the device does not have it yet. The
-        // system keeps the models of only so many locales for an app, so one
-        // used earlier is given up first when there is no room.
+        // Download the language's model if the device does not have it yet.
         if await AssetInventory.status(forModules: [transcriber]) != .installed {
-            let reserved = await AssetInventory.reservedLocales
-            let giveUp = SpeechModelBudget.toRelease(
-                reserved: reserved.map { $0.identifier(.bcp47) },
-                wanted: locale.identifier(.bcp47),
-                maximum: AssetInventory.maximumReservedLocales
-            )
-            for old in reserved where giveUp.contains(old.identifier(.bcp47)) {
-                await AssetInventory.release(reservedLocale: old)
+            var request: AssetInstallationRequest?
+            // Asking reserves a place for the locale, and the system refuses
+            // when the places are used up. A start that was stopped may still
+            // take a place after this one has looked, so a refusal is followed
+            // by one more look.
+            for attempt in 0..<2 {
+                try await Self.makeRoom(for: locale)
+                do {
+                    request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber])
+                    break
+                } catch {
+                    if attempt == 1 { throw error }
+                }
             }
-            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
-                try await request.downloadAndInstall()
-            }
+            try Task.checkCancellation()
+            try await request?.downloadAndInstall()
         }
         try Task.checkCancellation()
 
@@ -149,6 +151,24 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         self.converter = converter
         handedOver = 0
         return updates
+    }
+
+    /// The system keeps the speech models of only so many locales for an app.
+    /// Gives up ones used earlier when there is no room for `locale`. Stops
+    /// before each step if this start has been cancelled.
+    private static func makeRoom(for locale: Locale) async throws {
+        try Task.checkCancellation()
+        let reserved = await AssetInventory.reservedLocales
+        let giveUp = SpeechModelBudget.toRelease(
+            reserved: reserved.map { $0.identifier(.bcp47) },
+            wanted: locale.identifier(.bcp47),
+            maximum: AssetInventory.maximumReservedLocales
+        )
+        for old in reserved where giveUp.contains(old.identifier(.bcp47)) {
+            try Task.checkCancellation()
+            await AssetInventory.release(reservedLocale: old)
+        }
+        try Task.checkCancellation()
     }
 
     func append(_ samples: [Int16]) {

@@ -161,59 +161,65 @@ private struct LanguageRows: View {
     let controller: SessionController
     let isRunning: Bool
 
-    /// The language pack the user asked to download. The system shows its own
-    /// sheet for it.
+    /// The language pack the user asked to download, and the pair it is for.
+    /// The system shows its own sheet for it. Both are cleared when the sheet
+    /// has closed, so the request cannot run a second time by itself.
     @State private var packRequest: TranslationSession.Configuration?
+    @State private var requestedPair: LanguagePair?
 
     var body: some View {
-        Group {
-            Picker("说话的语言", selection: spoken) {
-                ForEach(controller.settings.spokenChoices) { language in
-                    Text(language.spokenName).tag(language)
-                }
-            }
-            .disabled(isRunning)
-            .accessibilityIdentifier("language")
-
-            Picker("翻译成", selection: target) {
-                ForEach(controller.settings.targetChoices) { language in
-                    Text(language.writtenName).tag(language)
-                }
-            }
-            .disabled(isRunning)
-            .accessibilityIdentifier("target")
-
-            if controller.settings.engineChoices.count > 1 {
-                Picker("翻译引擎", selection: engine) {
-                    ForEach(controller.settings.engineChoices, id: \.self) { engine in
-                        switch engine {
-                        case .languagePack: Text("语言包").tag(engine)
-                        case .appleIntelligence: Text("Apple Intelligence").tag(engine)
-                        }
-                    }
-                }
-                .accessibilityIdentifier("engine")
-            }
-
-            if controller.settings.needsLanguagePack {
-                LabeledContent("语言包还没下载") {
-                    Button("下载") { requestLanguagePack() }
-                        .accessibilityIdentifier("downloadLanguagePack")
-                }
+        Picker("说话的语言", selection: spoken) {
+            ForEach(controller.settings.spokenChoices) { language in
+                Text(language.spokenName).tag(language)
             }
         }
+        .disabled(isRunning)
+        .accessibilityIdentifier("language")
+        // On one row that is always there. On a group of rows it would run
+        // once for each.
         .translationTask(packRequest) { session in
             // Shows the system's sheet, which asks before it downloads. The
             // session is not Sendable and this call leaves the main actor; that
             // is safe because nothing else uses this session.
             nonisolated(unsafe) let unisolated = session
+            var failure: (any Error)?
             do {
                 try await unisolated.prepareTranslation()
-                controller.languagePackRequestEnded(nil)
             } catch is CancellationError {
-                controller.languagePackRequestEnded(nil)
             } catch {
-                controller.languagePackRequestEnded(error)
+                failure = error
+            }
+            let pair = requestedPair
+            packRequest = nil
+            requestedPair = nil
+            if let pair { controller.languagePackRequestEnded(for: pair, error: failure) }
+        }
+
+        Picker("翻译成", selection: target) {
+            ForEach(controller.settings.targetChoices) { language in
+                Text(language.writtenName).tag(language)
+            }
+        }
+        .disabled(isRunning)
+        .accessibilityIdentifier("target")
+
+        if controller.settings.engineChoices.count > 1 {
+            Picker("翻译引擎", selection: engine) {
+                ForEach(controller.settings.engineChoices, id: \.self) { engine in
+                    switch engine {
+                    case .languagePack: Text("语言包").tag(engine)
+                    case .appleIntelligence: Text("Apple Intelligence").tag(engine)
+                    }
+                }
+            }
+            .accessibilityIdentifier("engine")
+        }
+
+        if controller.settings.needsLanguagePack {
+            LabeledContent("语言包还没下载") {
+                Button("下载") { requestLanguagePack() }
+                    .disabled(packRequest != nil)
+                    .accessibilityIdentifier("downloadLanguagePack")
             }
         }
     }
@@ -230,15 +236,13 @@ private struct LanguageRows: View {
         Binding(get: { controller.settings.engine }, set: { controller.choose(engine: $0) })
     }
 
-    /// Asks the system for the language pack of the chosen languages. Asking for
-    /// the same pair again runs the request again.
+    /// Asks the system for the language pack of the languages in use. While a
+    /// request is out, the button is off.
     private func requestLanguagePack() {
-        let source = controller.languages.spoken.translationLanguage
-        let target = controller.languages.target.translationLanguage
-        if packRequest?.source == source, packRequest?.target == target {
-            packRequest?.invalidate()
-        } else {
-            packRequest = TranslationSession.Configuration(source: source, target: target)
-        }
+        guard packRequest == nil else { return }
+        let pair = controller.languages
+        requestedPair = pair
+        packRequest = TranslationSession.Configuration(
+            source: pair.spoken.translationLanguage, target: pair.target.translationLanguage)
     }
 }

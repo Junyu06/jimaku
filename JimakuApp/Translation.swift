@@ -32,7 +32,13 @@ enum TranslationSetupError: LocalizedError {
     }
 }
 
-/// Translation with the system's downloaded language packs. Nothing leaves the device.
+/// Translation with the system's Translation framework. Nothing leaves the device.
+///
+/// The availability check, the session, and the download request in the
+/// settings all leave the framework's strategy at its default, so they agree
+/// with each other. Which strategy that is depends on the SDK the app is built
+/// with and on the device; see
+/// `docs/pitfalls/the-translation-framework-answers-by-a-default-strategy-that-changed-with-the-sdk.md`.
 @MainActor
 final class LanguagePackSource: TranslatorSource {
     func prepare(for languages: LanguagePair) async throws -> any PreparedTranslator {
