@@ -16,6 +16,10 @@ public enum EngineObstacle: Equatable, Sendable {
     case noLanguagePack
     /// Both sides are forms of one language, which nothing translates.
     case sameLanguage
+    /// The system gave no answer about this engine and these languages: it was
+    /// not asked about the pair's language pack, or the model named no
+    /// language at all. The engine is not used, and no reason is made up.
+    case notReported
 }
 
 /// What this device can do with the languages, as the system reported it.
@@ -62,9 +66,15 @@ public struct LanguageSupport: Equatable, Sendable {
         guard pair.isTranslatable else { return .sameLanguage }
         switch engine {
         case .languagePack:
-            return packStatus(for: pair) == .unsupported ? .noLanguagePack : nil
+            switch packs[pair] {
+            case .installed, .downloadable: return nil
+            case .unsupported: return .noLanguagePack
+            case nil: return .notReported
+            }
         case .appleIntelligence:
             guard deviceRunsModel else { return .deviceCannotRunModel }
+            // A model that names no language has not said which it lacks.
+            guard !modelLanguages.isEmpty else { return .notReported }
             // The spoken language first: it is the one the user picked the
             // video by.
             return [pair.spoken, pair.target].first { !modelLanguages.contains($0) }.map { .modelLacksLanguage($0) }

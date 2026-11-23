@@ -431,7 +431,8 @@ struct LanguageSettingsTests {
         settings.lock()
         let prepared = settings.preparation
         #expect(prepared.engine == .languagePack)
-        settings.chosenEngine = .languagePack
+        settings.choose(engine: .languagePack)
+        #expect(settings.chosenEngine == .languagePack)
         #expect(!settings.needsPreparingAgain(after: prepared, isReady: true, missedPack: false))
     }
 

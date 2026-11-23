@@ -9,7 +9,7 @@ public struct LanguageSettings: Equatable, Sendable {
     public private(set) var chosen: LanguagePair
 
     /// The engine the user chose. `engine` is the one in use.
-    public var chosenEngine: TranslationEngine
+    public private(set) var chosenEngine: TranslationEngine
 
     /// The side the user chose last. When the device cannot do the pair, the
     /// other side gives way first. Stored with the choice.
@@ -102,6 +102,22 @@ public struct LanguageSettings: Equatable, Sendable {
     /// and one that has something in its way cannot be chosen.
     public func obstacle(to engine: TranslationEngine) -> EngineObstacle? {
         support?.obstacle(to: engine, for: pair)
+    }
+
+    /// Whether some engine can translate the pair in use, or the device has
+    /// not answered yet. When none can, there is no engine in use to show.
+    public var canTranslate: Bool {
+        support.map { !$0.engines(for: pair).isEmpty } ?? true
+    }
+
+    /// Chooses an engine, unless something is in its way; the earlier choice
+    /// then stays. It can be chosen while a session runs. Returns whether it
+    /// was chosen.
+    @discardableResult
+    public mutating func choose(engine: TranslationEngine) -> Bool {
+        guard obstacle(to: engine) == nil else { return false }
+        chosenEngine = engine
+        return true
     }
 
     // MARK: Choosing

@@ -207,15 +207,24 @@ private struct LanguageRows: View {
         // languages here is greyed out, with the reason after its name. The
         // reason is part of the one line: a menu made by a picker shows no
         // second line.
-        Picker("翻译引擎", selection: engine) {
-            ForEach(TranslationEngine.allCases, id: \.self) { engine in
-                let obstacle = controller.settings.obstacle(to: engine)
-                Text(obstacle.map { "\(name(of: engine))（\(reason(for: $0))）" } ?? name(of: engine))
-                    .tag(engine)
-                    .selectionDisabled(obstacle != nil)
+        if controller.settings.canTranslate {
+            Picker("翻译引擎", selection: engine) {
+                ForEach(TranslationEngine.allCases, id: \.self) { engine in
+                    let obstacle = controller.settings.obstacle(to: engine)
+                    Text(obstacle.map { "\(name(of: engine))（\(reason(for: $0))）" } ?? name(of: engine))
+                        .tag(engine)
+                        .selectionDisabled(obstacle != nil)
+                }
             }
+            .accessibilityIdentifier("engine")
+        } else {
+            // No engine can translate these languages, so there is none in
+            // use for a picker to show as chosen.
+            LabeledContent("翻译引擎") {
+                Text("这两种语言现在翻译不了")
+            }
+            .accessibilityIdentifier("engine")
         }
-        .accessibilityIdentifier("engine")
 
         if controller.settings.needsLanguagePack {
             LabeledContent("语言包还没下载") {
@@ -253,6 +262,7 @@ private struct LanguageRows: View {
             "不支持\(language == controller.languages.spoken ? language.spokenName : language.writtenName)"
         case .noLanguagePack: "没有这两种语言的语言包"
         case .sameLanguage: "两边是同一种语言"
+        case .notReported: "系统没有给出结果"
         }
     }
 
