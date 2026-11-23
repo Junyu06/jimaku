@@ -5,8 +5,8 @@ status: simulated
 
 # Text size and display mode change the caption window
 
-- Input: change 字号 (text size) between 小, 中, 大 and 显示 (display) between 原文和中文 and 只显示中文, before and during a session. Close and reopen the app.
-- Expected result: the caption window changes at once: larger or smaller text with fewer or more characters on a line, and with 只显示中文 only the Chinese row. The choices are still set after reopening the app.
+- Input: change 字号 (text size) between 小, 中, 大 and 显示 (display) between 原文和译文 and 只显示译文, before and during a session. Close and reopen the app.
+- Expected result: the caption window changes at once: larger or smaller text with fewer or more characters on a line, and with 只显示译文 only the translation row. The choices are still set after reopening the app.
 - Property: caption appearance follows the user's settings immediately and is remembered.
 
 ## Evidence
@@ -15,5 +15,6 @@ status: simulated
 - 2026-11-12, same simulator, after captions moved to fixed lines: 大 during a session gave eleven Chinese characters on a line instead of twelve, and both rows still fit the window. 小 and 只显示中文 were not exercised again. Simulator only.
 - The three sizes were made smaller after these runs (twenty-seven, twenty-three, or twenty Chinese characters to a line).
 - 2026-11-12, physical iPad: the owner changed the size during sessions and reported on how each looked, at 40, 30, and 24 columns (all too large) and at 60, 50, and 40 (large kept, small and medium a little too small). The display mode and reopening the app were not reported. No screenshot kept.
+- 2026-11-23, iPad mini (A17 Pro) simulator, iOS 27.0, after the display modes were renamed: choosing 只显示译文 during a session left only the translation row in the floating window. Simulator only.
 - Physical iPad, the present small and medium sizes: not run.
 - Physical iPhone: not run.
