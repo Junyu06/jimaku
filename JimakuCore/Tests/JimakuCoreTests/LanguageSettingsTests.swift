@@ -207,6 +207,32 @@ struct LanguageSettingsTests {
         #expect(reopened.pair == LanguagePair(spoken: .japanese, target: .french))
     }
 
+    @Test("What was shown on the other side is restored too, so opening the app again does not change the pair in use")
+    func shownBeforeIsRestored() {
+        // English into Simplified Chinese; Japanese into English and into Simplified Chinese.
+        let device = LanguageSupport(
+            recognizable: [.english, .japanese],
+            packs: [
+                toChinese(.english): .installed,
+                LanguagePair(spoken: .japanese, target: .english): .installed,
+                toChinese(.japanese): .installed,
+            ]
+        )
+        var settings = settings(LanguagePair(spoken: .english, target: .french))
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.pair == toChinese(.english))
+        settings.choose(spoken: .japanese)
+        // The target on screen stays Simplified Chinese, though English comes first in the list.
+        #expect(settings.pair == toChinese(.japanese))
+        #expect(settings.shownBefore == .simplifiedChinese)
+
+        var reopened = LanguageSettings(
+            chosen: settings.chosen, engine: settings.chosenEngine, kept: settings.kept,
+            shownBefore: settings.shownBefore)
+        reopened.take(device, asked: reopened.beginAsking())
+        #expect(reopened.pair == toChinese(.japanese))
+    }
+
     // MARK: Whether a session can start
 
     @Test("A session can start before the device has answered, and when it can do the pair")
