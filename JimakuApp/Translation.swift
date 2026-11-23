@@ -15,20 +15,19 @@ protocol PreparedTranslator: AnyObject {
 @MainActor
 protocol TranslatorSource: AnyObject {
     /// Throws when translation cannot run, with a message the user can act on.
-    func prepare(from language: SourceLanguage) async throws -> any PreparedTranslator
+    func prepare(for languages: LanguagePair) async throws -> any PreparedTranslator
 }
 
 enum TranslationSetupError: LocalizedError {
-    case languagePackMissing(SourceLanguage)
-    case languagePairNotSupported
+    case languagePackMissing(LanguagePair)
+    case languagePairNotSupported(LanguagePair)
 
     var errorDescription: String? {
         switch self {
-        case .languagePackMissing(let language):
-            let name = language == .english ? "英语" : "日语"
-            return "翻译语言包还没下载。到系统的 设置 → App → 翻译 → 下载的语言 里，下载\(name)和简体中文。"
-        case .languagePairNotSupported:
-            return "系统翻译不支持这两种语言之间的翻译。"
+        case .languagePackMissing(let languages):
+            "\(languages.spoken.spokenName)翻译成\(languages.target.writtenName)的语言包还没下载。回到 Jimaku，在设置里点「下载」。"
+        case .languagePairNotSupported(let languages):
+            "系统的语言包不能把\(languages.spoken.spokenName)翻译成\(languages.target.writtenName)。"
         }
     }
 }
@@ -36,18 +35,18 @@ enum TranslationSetupError: LocalizedError {
 /// Translation with the system's downloaded language packs. Nothing leaves the device.
 @MainActor
 final class LanguagePackSource: TranslatorSource {
-    func prepare(from language: SourceLanguage) async throws -> any PreparedTranslator {
-        let source = Locale.Language(identifier: language.languageCode)
-        let target = Locale.Language(identifier: TargetLanguage.identifier)
+    func prepare(for languages: LanguagePair) async throws -> any PreparedTranslator {
+        let source = languages.spoken.translationLanguage
+        let target = languages.target.translationLanguage
         switch await LanguageAvailability().status(from: source, to: target) {
         case .installed:
             return LanguagePackTranslator(session: TranslationSession(installedSource: source, target: target))
         case .supported:
-            throw TranslationSetupError.languagePackMissing(language)
+            throw TranslationSetupError.languagePackMissing(languages)
         case .unsupported:
-            throw TranslationSetupError.languagePairNotSupported
+            throw TranslationSetupError.languagePairNotSupported(languages)
         @unknown default:
-            throw TranslationSetupError.languagePairNotSupported
+            throw TranslationSetupError.languagePairNotSupported(languages)
         }
     }
 }
@@ -70,13 +69,14 @@ private final class LanguagePackTranslator: PreparedTranslator {
 
 #if targetEnvironment(simulator)
     /// The simulator has no translation language packs, so this looks pieces of
-    /// the demo speech up in its prepared translation. Simulator only.
+    /// the demo speech up in its prepared translation, which is in Simplified
+    /// Chinese whatever the target. Simulator only.
     @MainActor
     final class ScriptedSource: TranslatorSource, PreparedTranslator {
         private var speech: [CaptionLines] = []
 
-        func prepare(from language: SourceLanguage) async throws -> any PreparedTranslator {
-            speech = DemoCaptions.speech(in: language)
+        func prepare(for languages: LanguagePair) async throws -> any PreparedTranslator {
+            speech = DemoCaptions.speech(in: languages.spoken)
             return self
         }
 

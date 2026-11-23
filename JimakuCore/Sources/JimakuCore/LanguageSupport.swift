@@ -52,31 +52,51 @@ public struct LanguageSupport: Equatable, Sendable {
         return usable.contains(preferred) ? preferred : usable.first ?? preferred
     }
 
-    /// The spoken languages to offer for a target: those the device recognizes
-    /// and some engine can translate into it.
-    public func spokenChoices(for target: CaptionLanguage) -> [CaptionLanguage] {
-        CaptionLanguage.all.filter { spoken in
-            recognizable.contains(spoken) && !engines(for: LanguagePair(spoken: spoken, target: target)).isEmpty
-        }
+    /// The spoken languages to offer: those the device recognizes and some
+    /// engine can translate into something. The target does not narrow the
+    /// list, so choosing a language of the target's family swaps the two.
+    public var spokenChoices: [CaptionLanguage] {
+        CaptionLanguage.all.filter { !targets(for: $0).isEmpty }
     }
 
     /// The targets to offer: those some spoken language can be translated into.
     public var targetChoices: [CaptionLanguage] {
-        CaptionLanguage.all.filter { !spokenChoices(for: $0).isEmpty }
+        CaptionLanguage.all.filter { !spoken(for: $0).isEmpty }
     }
 
-    /// `pair`, or the nearest pair this device can do: the same spoken language
-    /// into another target, else another spoken language. A device that reports
-    /// nothing leaves the pair as it is.
-    public func settled(_ pair: LanguagePair) -> LanguagePair {
-        let targets = targetChoices
-        guard let firstTarget = targets.first else { return pair }
-        var pair = pair
-        if !targets.contains(pair.target) {
-            pair.target = targets.first { spokenChoices(for: $0).contains(pair.spoken) } ?? firstTarget
+    /// One of the two languages of a pair.
+    public enum Side: Equatable, Sendable {
+        case spoken
+        case target
+    }
+
+    /// `pair`, or the nearest pair this device can do. The side to keep is the
+    /// one the user just chose: the other one gives way first. A side the device
+    /// cannot do at all gives way too, and a device that reports nothing leaves
+    /// the pair as it is.
+    public func settled(_ pair: LanguagePair, keeping side: Side) -> LanguagePair {
+        guard engines(for: pair).isEmpty else { return pair }
+        let withSpoken = targets(for: pair.spoken).first.map { LanguagePair(spoken: pair.spoken, target: $0) }
+        let withTarget = spoken(for: pair.target).first.map { LanguagePair(spoken: $0, target: pair.target) }
+        let any = spokenChoices.first.flatMap { spoken in
+            targets(for: spoken).first.map { LanguagePair(spoken: spoken, target: $0) }
         }
-        let spoken = spokenChoices(for: pair.target)
-        if !spoken.contains(pair.spoken), let first = spoken.first { pair.spoken = first }
-        return pair
+        switch side {
+        case .spoken: return withSpoken ?? withTarget ?? any ?? pair
+        case .target: return withTarget ?? withSpoken ?? any ?? pair
+        }
+    }
+
+    /// What `spoken` can be translated into, if the device recognizes it.
+    private func targets(for spoken: CaptionLanguage) -> [CaptionLanguage] {
+        guard recognizable.contains(spoken) else { return [] }
+        return CaptionLanguage.all.filter { !engines(for: LanguagePair(spoken: spoken, target: $0)).isEmpty }
+    }
+
+    /// The recognized languages that can be translated into `target`.
+    private func spoken(for target: CaptionLanguage) -> [CaptionLanguage] {
+        CaptionLanguage.all.filter {
+            recognizable.contains($0) && !engines(for: LanguagePair(spoken: $0, target: target)).isEmpty
+        }
     }
 }

@@ -15,7 +15,7 @@ struct Heard: Sendable {
 protocol SpeechRecognizing: AnyObject {
     /// Starts recognizing `language`. Updates arrive on the returned stream until
     /// `stop()` is called or recognition fails.
-    func start(language: SourceLanguage) async throws -> AsyncThrowingStream<Heard, Error>
+    func start(language: CaptionLanguage) async throws -> AsyncThrowingStream<Heard, Error>
 
     /// Hands over the next samples, in the shared ring's format.
     func append(_ samples: [Int16])
@@ -65,12 +65,13 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         case pause(CMTime)
     }
 
-    func start(language: SourceLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
+    func start(language: CaptionLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
         await stop()
 
         guard SpeechTranscriber.isAvailable else { throw SpeechRecognitionError.unavailable }
-        let wanted = Locale(identifier: language.localeIdentifier)
-        guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) else {
+        guard let identifier = language.recognizerLocale,
+            let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier))
+        else {
             throw SpeechRecognitionError.languageNotSupported
         }
         try Task.checkCancellation()
@@ -108,7 +109,8 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         resultsTask = Task {
             do {
                 for try await result in transcriber.results {
-                    let text = String(result.text.characters)
+                    // Chinese comes with a space before each comma and full stop.
+                    let text = CaptionText.closingUpMarks(String(result.text.characters))
                     updatesContinuation.yield(
                         Heard(update: result.isFinal ? .final(text) : .partial(text), end: result.range.end.seconds))
                 }
@@ -233,7 +235,7 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
     final class ScriptedSpeechRecognizer: SpeechRecognizing {
         private var task: Task<Void, Never>?
 
-        func start(language: SourceLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
+        func start(language: CaptionLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
             await stop()
             let sentences = DemoCaptions.speech(in: language).map(\.original)
             let (updates, continuation) = AsyncThrowingStream<Heard, Error>.makeStream()

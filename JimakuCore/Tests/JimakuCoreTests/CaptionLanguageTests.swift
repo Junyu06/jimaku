@@ -218,19 +218,31 @@ struct LanguageSupportTests {
         #expect(device.engine(preferring: .languagePack, for: toChinese(.french)) == .languagePack)
     }
 
-    @Test("The spoken languages offered are those the device recognizes and can translate into the target")
+    @Test("The spoken languages offered are those the device recognizes and can translate into something")
     func spokenChoices() {
-        #expect(device.spokenChoices(for: .simplifiedChinese) == [.english, .japanese, .korean])
-        #expect(device.spokenChoices(for: .english) == [.japanese])
-        #expect(device.spokenChoices(for: .traditionalChinese) == [.english, .japanese])
-        #expect(device.spokenChoices(for: .french) == [])
+        #expect(device.spokenChoices == [.english, .japanese, .korean])
     }
 
     @Test("A language that is not recognized is not offered even with a language pack")
     func unrecognizedIsNotOffered() {
         var device = device
         device.packs[toChinese(.german)] = .installed
-        #expect(!device.spokenChoices(for: .simplifiedChinese).contains(.german))
+        #expect(!device.spokenChoices.contains(.german))
+    }
+
+    @Test("A language that is recognized but cannot be translated into anything is not offered")
+    func untranslatableIsNotOffered() {
+        var device = device
+        device.recognizable.insert(.french)
+        #expect(!device.spokenChoices.contains(.french))
+    }
+
+    @Test("The spoken language stays offered when it is of the target's family, so choosing it can swap the two")
+    func spokenChoicesIgnoreTheTarget() {
+        var device = device
+        device.recognizable.insert(.simplifiedChinese)
+        device.packs[LanguagePair(spoken: .simplifiedChinese, target: .english)] = .installed
+        #expect(device.spokenChoices == [.english, .japanese, .simplifiedChinese, .korean])
     }
 
     @Test("The targets offered are those some spoken language can be translated into")
@@ -241,30 +253,42 @@ struct LanguageSupportTests {
 
     @Test("A pair the device can do is left alone")
     func settledKeeps() {
-        #expect(device.settled(toChinese(.korean)) == toChinese(.korean))
+        #expect(device.settled(toChinese(.korean), keeping: .spoken) == toChinese(.korean))
+        #expect(device.settled(toChinese(.korean), keeping: .target) == toChinese(.korean))
     }
 
-    @Test("A spoken language the device cannot do gives way to the first it can")
-    func settledSpoken() {
-        #expect(device.settled(toChinese(.french)) == toChinese(.english))
+    @Test("When the spoken language was just chosen, the target gives way")
+    func settledKeepingSpoken() {
+        // Korean cannot go into English here; Simplified Chinese is the first it can go into.
         #expect(
-            device.settled(LanguagePair(spoken: .english, target: .english))
+            device.settled(LanguagePair(spoken: .korean, target: .english), keeping: .spoken) == toChinese(.korean))
+    }
+
+    @Test("When the target was just chosen, the spoken language gives way")
+    func settledKeepingTarget() {
+        #expect(
+            device.settled(LanguagePair(spoken: .korean, target: .english), keeping: .target)
                 == LanguagePair(spoken: .japanese, target: .english))
     }
 
-    @Test("A target nothing can be translated into gives way too")
-    func settledTarget() {
-        // The first target English can be translated into is Japanese, by the model.
+    @Test("A side the device cannot do at all gives way even when it was the one to keep")
+    func settledWhenTheKeptSideIsImpossible() {
+        #expect(device.settled(toChinese(.french), keeping: .spoken) == toChinese(.english))
+        // English can be translated into Japanese, by the model.
         #expect(
-            device.settled(LanguagePair(spoken: .english, target: .french))
+            device.settled(LanguagePair(spoken: .english, target: .french), keeping: .target)
                 == LanguagePair(spoken: .english, target: .japanese))
+    }
+
+    @Test("When neither side can be done, the first pair the device can do is used")
+    func settledWithNeither() {
         #expect(
-            device.settled(LanguagePair(spoken: .korean, target: .german))
-                == LanguagePair(spoken: .korean, target: .simplifiedChinese))
+            device.settled(LanguagePair(spoken: .french, target: .german), keeping: .spoken)
+                == LanguagePair(spoken: .english, target: .japanese))
     }
 
     @Test("A device that reports nothing leaves the choice as it is")
     func settledWithNothing() {
-        #expect(LanguageSupport().settled(toChinese(.french)) == toChinese(.french))
+        #expect(LanguageSupport().settled(toChinese(.french), keeping: .spoken) == toChinese(.french))
     }
 }
