@@ -18,7 +18,9 @@ public struct LanguageSettings: Equatable, Sendable {
     /// What was shown on the other side when the user last chose. When that
     /// side has to give way, it goes back to this if the device can do it, so
     /// choosing one side does not change the other on screen without need.
-    private var shownBefore: CaptionLanguage?
+    /// Stored with the choice, so the pair in use is the same when the app is
+    /// opened again.
+    public private(set) var shownBefore: CaptionLanguage?
 
     /// What the device can do. Nil until the system has answered.
     public private(set) var support: LanguageSupport?
@@ -31,10 +33,16 @@ public struct LanguageSettings: Equatable, Sendable {
     private var asked = 0
     private var answered = 0
 
-    public init(chosen: LanguagePair, engine: TranslationEngine, kept: LanguageSupport.Side = .spoken) {
+    public init(
+        chosen: LanguagePair,
+        engine: TranslationEngine,
+        kept: LanguageSupport.Side = .spoken,
+        shownBefore: CaptionLanguage? = nil
+    ) {
         self.chosen = chosen
         self.chosenEngine = engine
         self.kept = kept
+        self.shownBefore = shownBefore
     }
 
     // MARK: What is in use
@@ -93,7 +101,10 @@ public struct LanguageSettings: Equatable, Sendable {
     /// Chooses the spoken language. Choosing the language shown as the target
     /// swaps the two that are shown. Otherwise only the spoken side of the
     /// choice changes: a target that has given way stays chosen and comes back
-    /// when the device can do it. Does nothing while a session runs.
+    /// when the device can do it. One case remains where both sides change: the
+    /// chosen target has given way and is of the language now chosen as
+    /// spoken. It cannot stay the target, and the one shown takes its place.
+    /// Does nothing while a session runs.
     public mutating func choose(spoken: CaptionLanguage) {
         guard locked == nil, let spoken = spoken.spokenForm else { return }
         let shown = pair
