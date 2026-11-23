@@ -28,6 +28,10 @@ struct CaptionLanguageTests {
         #expect(CaptionLanguage.simplifiedChinese.recognizerLocale == "zh-CN")
         #expect(CaptionLanguage.korean.recognizerLocale == "ko-KR")
         #expect(CaptionLanguage.portuguese.recognizerLocale == "pt-BR")
+        #expect(
+            CaptionLanguage.all.map(\.recognizerLocale) == [
+                "en-US", "ja-JP", "zh-CN", nil, "ko-KR", "es-ES", "fr-FR", "de-DE", "it-IT", "pt-BR", "hi-IN",
+            ])
         let locales = CaptionLanguage.all.compactMap(\.recognizerLocale)
         #expect(Set(locales).count == locales.count)
     }
@@ -37,6 +41,21 @@ struct CaptionLanguageTests {
         #expect(CaptionLanguage.traditionalChinese.recognizerLocale == nil)
         #expect(!CaptionLanguage.traditionalChinese.canBeSpoken)
         #expect(CaptionLanguage.all.filter { !$0.canBeSpoken } == [.traditionalChinese])
+    }
+
+    @Test("A language that is only written is spoken as the form of its family that can be")
+    func spokenForm() {
+        #expect(CaptionLanguage.traditionalChinese.spokenForm == .simplifiedChinese)
+        #expect(CaptionLanguage.simplifiedChinese.spokenForm == .simplifiedChinese)
+        #expect(CaptionLanguage.korean.spokenForm == .korean)
+    }
+
+    @Test("What the recognizer reports is tidied for Chinese only")
+    func tidying() {
+        #expect(CaptionLanguage.simplifiedChinese.tidying("我去了超市 ，买了牛奶 。") == "我去了超市，买了牛奶。")
+        #expect(CaptionLanguage.japanese.tidying("東京 、大阪") == "東京 、大阪")
+        #expect(CaptionLanguage.english.tidying("Yes , really 。") == "Yes , really 。")
+        #expect(CaptionLanguage.korean.tidying("네 ，좋아요") == "네 ，좋아요")
     }
 
     @Test("The two written forms of Chinese are one family; every other language is its own")
@@ -101,18 +120,34 @@ struct LanguagePairTests {
         #expect(pair.choosing(spoken: .korean) == LanguagePair(spoken: .korean, target: .simplifiedChinese))
     }
 
+    @Test("A target that is only written swaps in as the spoken form of its family")
+    func swapFromTraditionalChinese() {
+        let pair = LanguagePair(spoken: .japanese, target: .traditionalChinese)
+        #expect(pair.choosing(target: .japanese) == LanguagePair(spoken: .simplifiedChinese, target: .japanese))
+    }
+
     @Test("A swap that would leave both languages Chinese picks another one instead")
     func swapWithinChinese() {
-        // The old target cannot be spoken, so English takes over as spoken.
-        let fromTraditional = LanguagePair(spoken: .japanese, target: .traditionalChinese)
-        #expect(
-            fromTraditional.choosing(target: .japanese)
-                == LanguagePair(spoken: .english, target: .japanese))
-        // The old spoken language is Chinese too, so it cannot become the target.
+        // The old spoken language is Chinese too, so English takes over as spoken.
         let chinese = LanguagePair(spoken: .simplifiedChinese, target: .english)
         #expect(
             chinese.choosing(target: .traditionalChinese)
                 == LanguagePair(spoken: .english, target: .traditionalChinese))
+        let toJapanese = LanguagePair(spoken: .simplifiedChinese, target: .japanese)
+        #expect(
+            toJapanese.choosing(target: .traditionalChinese)
+                == LanguagePair(spoken: .japanese, target: .traditionalChinese))
+    }
+
+    @Test("A language that is only written is chosen as spoken in its spoken form")
+    func chooseWrittenOnlyAsSpoken() {
+        let pair = LanguagePair(spoken: .english, target: .french)
+        #expect(
+            pair.choosing(spoken: .traditionalChinese) == LanguagePair(spoken: .simplifiedChinese, target: .french))
+        let toChinese = LanguagePair(spoken: .english, target: .traditionalChinese)
+        #expect(
+            toChinese.choosing(spoken: .traditionalChinese)
+                == LanguagePair(spoken: .simplifiedChinese, target: .english))
     }
 
     @Test("Stored identifiers bring the pair back")
@@ -278,6 +313,20 @@ struct LanguageSupportTests {
         #expect(
             device.settled(LanguagePair(spoken: .english, target: .french), keeping: .target)
                 == LanguagePair(spoken: .english, target: .japanese))
+    }
+
+    @Test("A spoken language the device does not recognize gives way even when an engine could translate it")
+    func settledUnrecognized() {
+        // The model knows French and English, and there is a pack the other way round.
+        let device = LanguageSupport(
+            recognizable: [.english],
+            packs: [LanguagePair(spoken: .english, target: .french): .installed],
+            modelLanguages: [.english, .french]
+        )
+        let pair = LanguagePair(spoken: .french, target: .english)
+        #expect(!device.canCaption(pair))
+        #expect(device.settled(pair, keeping: .spoken) == LanguagePair(spoken: .english, target: .french))
+        #expect(device.settled(pair, keeping: .target) == LanguagePair(spoken: .english, target: .french))
     }
 
     @Test("When neither side can be done, the first pair the device can do is used")

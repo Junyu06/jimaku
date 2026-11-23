@@ -363,6 +363,20 @@ struct ClosingUpMarksTests {
         #expect(CaptionText.closingUpMarks("") == "")
     }
 
+    @Test("Only plain spaces are taken out: a line break or a wide space stays")
+    func otherWhitespace() {
+        #expect(CaptionText.closingUpMarks("第一行\n，第二行") == "第一行\n，第二行")
+        #expect(CaptionText.closingUpMarks("左\u{3000}，右") == "左\u{3000}，右")
+        #expect(CaptionText.closingUpMarks("左 \t，右") == "左 \t，右")
+    }
+
+    @Test("Closing up never joins two characters into one")
+    func charactersStayApart() {
+        let text = "\u{0915}\u{094D}\n\u{3099}\u{0915}"
+        #expect(CaptionText.closingUpMarks(text) == text)
+        #expect(CaptionText.spokenCount(in: CaptionText.closingUpMarks(text)) == CaptionText.spokenCount(in: text))
+    }
+
     @Test("Closing up never changes what was said")
     func spokenStaysTheSame() {
         let text = "今天下雨 ，我没带伞 。Then we left ，对吧 ？"

@@ -48,6 +48,9 @@ struct TranslationPromptTests {
         let english = TranslationPrompt.instructions(from: .english, to: .simplifiedChinese)
         #expect(english.contains("from English into Simplified Chinese"))
         #expect(english.contains("Simplified Chinese translation only"))
+        #expect(
+            TranslationPrompt.instructions(from: .japanese, to: .simplifiedChinese)
+                .contains("from Japanese into Simplified Chinese"))
         let japanese = TranslationPrompt.instructions(from: .japanese, to: .english)
         #expect(japanese.contains("from Japanese into English"))
         #expect(japanese.contains("English translation only"))
