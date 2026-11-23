@@ -15,7 +15,7 @@ struct Heard: Sendable {
 protocol SpeechRecognizing: AnyObject {
     /// Starts recognizing `language`. Updates arrive on the returned stream until
     /// `stop()` is called or recognition fails.
-    func start(language: SourceLanguage) async throws -> AsyncThrowingStream<Heard, Error>
+    func start(language: CaptionLanguage) async throws -> AsyncThrowingStream<Heard, Error>
 
     /// Hands over the next samples, in the shared ring's format.
     func append(_ samples: [Int16])
@@ -65,12 +65,13 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         case pause(CMTime)
     }
 
-    func start(language: SourceLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
+    func start(language: CaptionLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
         await stop()
 
         guard SpeechTranscriber.isAvailable else { throw SpeechRecognitionError.unavailable }
-        let wanted = Locale(identifier: language.localeIdentifier)
-        guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: wanted) else {
+        guard let identifier = language.recognizerLocale,
+            let locale = await SpeechTranscriber.supportedLocale(equivalentTo: Locale(identifier: identifier))
+        else {
             throw SpeechRecognitionError.languageNotSupported
         }
         try Task.checkCancellation()
@@ -80,10 +81,23 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
 
         // Download the language's model if the device does not have it yet.
-        if await AssetInventory.status(forModules: [transcriber]) != .installed,
-            let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber])
-        {
-            try await request.downloadAndInstall()
+        if await AssetInventory.status(forModules: [transcriber]) != .installed {
+            var request: AssetInstallationRequest?
+            // Asking reserves a place for the locale, and the system refuses
+            // when the places are used up. A start that was stopped may still
+            // take a place after this one has looked, so a refusal is followed
+            // by one more look.
+            for attempt in 0..<2 {
+                try await Self.makeRoom(for: locale)
+                do {
+                    request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber])
+                    break
+                } catch {
+                    if attempt == 1 { throw error }
+                }
+            }
+            try Task.checkCancellation()
+            try await request?.downloadAndInstall()
         }
         try Task.checkCancellation()
 
@@ -108,7 +122,7 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         resultsTask = Task {
             do {
                 for try await result in transcriber.results {
-                    let text = String(result.text.characters)
+                    let text = language.tidying(String(result.text.characters))
                     updatesContinuation.yield(
                         Heard(update: result.isFinal ? .final(text) : .partial(text), end: result.range.end.seconds))
                 }
@@ -137,6 +151,24 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         self.converter = converter
         handedOver = 0
         return updates
+    }
+
+    /// The system keeps the speech models of only so many locales for an app.
+    /// Gives up ones used earlier when there is no room for `locale`. Stops
+    /// before each step if this start has been cancelled.
+    private static func makeRoom(for locale: Locale) async throws {
+        try Task.checkCancellation()
+        let reserved = await AssetInventory.reservedLocales
+        let giveUp = SpeechModelBudget.toRelease(
+            reserved: reserved.map { $0.identifier(.bcp47) },
+            wanted: locale.identifier(.bcp47),
+            maximum: AssetInventory.maximumReservedLocales
+        )
+        for old in reserved where giveUp.contains(old.identifier(.bcp47)) {
+            try Task.checkCancellation()
+            await AssetInventory.release(reservedLocale: old)
+        }
+        try Task.checkCancellation()
     }
 
     func append(_ samples: [Int16]) {
@@ -233,7 +265,7 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
     final class ScriptedSpeechRecognizer: SpeechRecognizing {
         private var task: Task<Void, Never>?
 
-        func start(language: SourceLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
+        func start(language: CaptionLanguage) async throws -> AsyncThrowingStream<Heard, Error> {
             await stop()
             let sentences = DemoCaptions.speech(in: language).map(\.original)
             let (updates, continuation) = AsyncThrowingStream<Heard, Error>.makeStream()

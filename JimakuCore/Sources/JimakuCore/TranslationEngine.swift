@@ -9,20 +9,15 @@ public enum TranslationEngine: String, CaseIterable, Equatable, Sendable {
 /// What to say to a language model to get a caption translated, and how to tidy up
 /// what it says back.
 public enum TranslationPrompt {
-    public static func instructions(from language: SourceLanguage) -> String {
-        let source =
-            switch language {
-            case .english: "English"
-            case .japanese: "Japanese"
-            }
-        return """
-            You translate live video captions from \(source) into Simplified Chinese.
-            Reply with the Simplified Chinese translation only: no quotation marks, no notes, \
-            no explanations, and none of the original text.
-            Keep it short and natural, the way a subtitle reads.
-            The text comes from speech recognition, so it may contain mistakes or be cut off; \
-            translate what is there.
-            """
+    public static func instructions(from spoken: CaptionLanguage, to target: CaptionLanguage) -> String {
+        """
+        You translate live video captions from \(spoken.englishName) into \(target.englishName).
+        Reply with the \(target.englishName) translation only: no quotation marks, no notes, \
+        no explanations, and none of the original text.
+        Keep it short and natural, the way a subtitle reads.
+        The text comes from speech recognition, so it may contain mistakes or be cut off; \
+        translate what is there.
+        """
     }
 
     /// Reduces a model's reply to the translation itself: models sometimes add a

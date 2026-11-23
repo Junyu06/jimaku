@@ -426,37 +426,3 @@ struct RecordedTranscriptTests {
         #expect(spoken(run.transcript.entries.map(\.original).joined()).lowercased() == spoken(finals).lowercased())
     }
 }
-
-@Suite("SourceLanguage")
-struct SourceLanguageTests {
-    @Test("English and Japanese are offered, English first")
-    func cases() {
-        #expect(SourceLanguage.allCases == [.english, .japanese])
-    }
-
-    @Test("Each language names the locale to recognize")
-    func locales() {
-        #expect(SourceLanguage.english.localeIdentifier == "en-US")
-        #expect(SourceLanguage.japanese.localeIdentifier == "ja-JP")
-    }
-
-    @Test("Each language names the language to translate from")
-    func languageCodes() {
-        #expect(SourceLanguage.english.languageCode == "en")
-        #expect(SourceLanguage.japanese.languageCode == "ja")
-    }
-
-    @Test("A language survives being stored and read back")
-    func rawValues() {
-        for language in SourceLanguage.allCases {
-            #expect(SourceLanguage(rawValue: language.rawValue) == language)
-        }
-    }
-
-    @Test("Each language has its own rules for cutting speech into pieces")
-    func chunkRules() {
-        #expect(SourceLanguage.japanese.chunkRules == .japanese)
-        #expect(SourceLanguage.english.chunkRules == .english)
-        #expect(ChunkRules.japanese.limit < ChunkRules.english.limit)
-    }
-}

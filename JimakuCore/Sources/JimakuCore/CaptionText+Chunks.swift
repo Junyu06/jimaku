@@ -30,15 +30,6 @@ public struct ChunkRules: Equatable, Sendable {
     public static let english = ChunkRules(clauseMinimum: 36, limit: 72)
 }
 
-extension SourceLanguage {
-    public var chunkRules: ChunkRules {
-        switch self {
-        case .english: .english
-        case .japanese: .japanese
-        }
-    }
-}
-
 extension CaptionText {
     /// Whether a character is something that was said, as opposed to punctuation or
     /// spacing. The recognizer keeps changing its mind about punctuation long after
@@ -66,6 +57,37 @@ extension CaptionText {
             index = text.index(after: index)
         }
         return String(text[index...]).trimmed
+    }
+
+    /// `text` without the spaces that stand before a wide mark closing a phrase.
+    /// The recognizer writes Chinese with a space before each comma and full
+    /// stop. Only plain spaces go: a run with a line break, a tab, or a wide
+    /// space in it stays, and so does a run at the very start. The spoken
+    /// characters and their order are left as they were.
+    public static func closingUpMarks(_ text: String) -> String {
+        var result: [Character] = []
+        var spaces: [Character] = []
+        for character in text {
+            if character.isWhitespace {
+                spaces.append(character)
+                continue
+            }
+            let plain = spaces.allSatisfy { $0 == " " }
+            if !(plain && closesPhrase(character)) || result.isEmpty { result += spaces }
+            spaces.removeAll(keepingCapacity: true)
+            result.append(character)
+        }
+        return String(result + spaces)
+    }
+
+    /// Whether a character is a wide mark that closes what stands before it: a
+    /// comma, a full stop, a closing bracket or quote. Brackets that open, dashes,
+    /// symbols, and emoji are not.
+    private static func closesPhrase(_ character: Character) -> Bool {
+        guard width(of: character) == 2, !openers.contains(character),
+            let category = character.unicodeScalars.first?.properties.generalCategory
+        else { return false }
+        return category == .otherPunctuation || category == .closePunctuation || category == .finalPunctuation
     }
 
     /// Cuts pieces off the front of `text`, each a sentence, a clause, or a run of

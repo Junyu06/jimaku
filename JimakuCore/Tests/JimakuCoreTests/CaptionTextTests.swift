@@ -331,3 +331,55 @@ struct WrapTests {
         #expect(CaptionText.wrap("切到别的 app，继续看。", columns: 14) == ["切到别的 app，", "继续看。"])
     }
 }
+
+@Suite("Closing up marks")
+struct ClosingUpMarksTests {
+    @Test("A space before a wide mark that closes a phrase is taken out")
+    func wideMarks() {
+        #expect(CaptionText.closingUpMarks("我去了超市 ，买了牛奶 。") == "我去了超市，买了牛奶。")
+        #expect(CaptionText.closingUpMarks("真的吗  ？是的 ！") == "真的吗？是的！")
+        #expect(CaptionText.closingUpMarks("他买了 iPhone ，很高兴") == "他买了 iPhone，很高兴")
+    }
+
+    @Test("A space before a mark that opens a phrase stays")
+    func openers() {
+        #expect(CaptionText.closingUpMarks("他说 「好」") == "他说 「好」")
+        #expect(CaptionText.closingUpMarks("书名 《新年》 很长") == "书名 《新年》 很长")
+    }
+
+    @Test("A space before a wide bracket that opens, or before a wide character that is no mark, stays")
+    func otherWideCharacters() {
+        #expect(CaptionText.closingUpMarks("见 ［注］ 和 ｛例｝") == "见 ［注］ 和 ｛例｝")
+        #expect(CaptionText.closingUpMarks("太好了 😀") == "太好了 😀")
+        #expect(CaptionText.closingUpMarks("一共 １００ 元") == "一共 １００ 元")
+        #expect(CaptionText.closingUpMarks("他说 ——不行") == "他说 ——不行")
+    }
+
+    @Test("Narrow marks and ordinary spaces are left alone")
+    func narrow() {
+        #expect(CaptionText.closingUpMarks("Well , I think so.") == "Well , I think so.")
+        #expect(CaptionText.closingUpMarks("one two  three") == "one two  three")
+        #expect(CaptionText.closingUpMarks("東京 大阪") == "東京 大阪")
+        #expect(CaptionText.closingUpMarks("") == "")
+    }
+
+    @Test("Only plain spaces are taken out: a line break or a wide space stays")
+    func otherWhitespace() {
+        #expect(CaptionText.closingUpMarks("第一行\n，第二行") == "第一行\n，第二行")
+        #expect(CaptionText.closingUpMarks("左\u{3000}，右") == "左\u{3000}，右")
+        #expect(CaptionText.closingUpMarks("左 \t，右") == "左 \t，右")
+    }
+
+    @Test("Closing up never joins two characters into one")
+    func charactersStayApart() {
+        let text = "\u{0915}\u{094D}\n\u{3099}\u{0915}"
+        #expect(CaptionText.closingUpMarks(text) == text)
+        #expect(CaptionText.spokenCount(in: CaptionText.closingUpMarks(text)) == CaptionText.spokenCount(in: text))
+    }
+
+    @Test("Closing up never changes what was said")
+    func spokenStaysTheSame() {
+        let text = "今天下雨 ，我没带伞 。Then we left ，对吧 ？"
+        #expect(CaptionText.spokenCount(in: CaptionText.closingUpMarks(text)) == CaptionText.spokenCount(in: text))
+    }
+}

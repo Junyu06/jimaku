@@ -36,9 +36,3 @@ public struct TranslationBacklog: Equatable, Sendable {
         waiting.removeAll()
     }
 }
-
-/// The language captions are translated into.
-public enum TargetLanguage {
-    /// Simplified Chinese.
-    public static let identifier = "zh-Hans"
-}

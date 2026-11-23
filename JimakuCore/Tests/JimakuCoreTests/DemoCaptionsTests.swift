@@ -40,9 +40,9 @@ struct DemoCaptionsTests {
 
 @Suite("Demo speech")
 struct DemoSpeechTests {
-    @Test("Each language has a few sentences, each with a translation")
+    @Test("Every language gets a few sentences, each with a translation")
     func speeches() {
-        for language in SourceLanguage.allCases {
+        for language in CaptionLanguage.all {
             let speech = DemoCaptions.speech(in: language)
             #expect(speech.count >= 4)
             for sentence in speech {
@@ -50,6 +50,12 @@ struct DemoSpeechTests {
                 #expect(!sentence.translation.isEmpty)
             }
         }
+    }
+
+    @Test("Japanese has a speech of its own; the other languages share the English one")
+    func speechByLanguage() {
+        #expect(DemoCaptions.speech(in: .japanese) != DemoCaptions.speech(in: .english))
+        #expect(DemoCaptions.speech(in: .korean) == DemoCaptions.speech(in: .english))
     }
 
     private let speech = [
