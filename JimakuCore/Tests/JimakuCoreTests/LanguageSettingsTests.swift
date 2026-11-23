@@ -125,12 +125,15 @@ struct LanguageSettingsTests {
     @Test("Before the device has answered, either engine can be chosen")
     func anyEngineBeforeAnAnswer() {
         var settings = settings(toChinese(.korean), engine: .languagePack)
-        let chose = settings.choose(engine: .appleIntelligence)
-        #expect(chose)
+        let choseModel = settings.choose(engine: .appleIntelligence)
+        #expect(choseModel)
         #expect(settings.chosenEngine == .appleIntelligence)
+        let chosePacks = settings.choose(engine: .languagePack)
+        #expect(chosePacks)
+        #expect(settings.chosenEngine == .languagePack)
     }
 
-    @Test("When no engine can translate the pair in use, the settings say so and keep the engine chosen")
+    @Test("When no engine can translate the pair in use, translating counts as not possible, and the engine chosen is kept for when one can")
     func noUsableEngine() {
         var settings = settings(toChinese(.english), engine: .appleIntelligence)
         #expect(settings.canTranslate)

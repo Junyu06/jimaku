@@ -67,13 +67,16 @@ extension LanguageSupport {
                     guard pair.isTranslatable else { continue }
                     let status = await availability.status(
                         from: spoken.translationLanguage, to: target.translationLanguage)
-                    support.packs[pair] =
+                    // An answer this build does not know is left out: the
+                    // pair then counts as not reported, not as without a pack.
+                    let pack: LanguagePackStatus? =
                         switch status {
                         case .installed: .installed
                         case .supported: .downloadable
                         case .unsupported: .unsupported
-                        @unknown default: .unsupported
+                        @unknown default: nil
                         }
+                    support.packs[pair] = pack
                 }
             }
 

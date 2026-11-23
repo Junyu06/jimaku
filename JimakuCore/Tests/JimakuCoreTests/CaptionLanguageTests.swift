@@ -252,7 +252,7 @@ struct LanguageSupportTests {
                 == .modelLacksLanguage(.korean))
     }
 
-    @Test("On a device that can never run the language model, that is what is in its way for any two languages")
+    @Test("On a device that can never run the language model, that is what is in its way for a pair that could be translated")
     func deviceCannotRunTheModel() {
         // Only the flag differs from `device`: the languages are still there.
         var device = device
@@ -279,7 +279,7 @@ struct LanguageSupportTests {
         #expect(!device.engines(for: pair).contains(.languagePack))
     }
 
-    @Test("A model that reported no language at all is not said to lack a particular one")
+    @Test("A model that confirmed none of the languages is not said to lack a particular one")
     func modelReportedNothing() {
         var device = device
         device.modelLanguages = []

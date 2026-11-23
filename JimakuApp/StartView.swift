@@ -218,8 +218,10 @@ private struct LanguageRows: View {
             }
             .accessibilityIdentifier("engine")
         } else {
-            // No engine can translate these languages, so there is none in
-            // use for a picker to show as chosen.
+            // The device reported that no engine can translate these
+            // languages, so a picker would have no line to show as chosen. A
+            // session that is running goes on with what it has and says what
+            // goes wrong.
             LabeledContent("翻译引擎") {
                 Text("这两种语言现在翻译不了")
             }

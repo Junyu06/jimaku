@@ -105,7 +105,9 @@ public struct LanguageSettings: Equatable, Sendable {
     }
 
     /// Whether some engine can translate the pair in use, or the device has
-    /// not answered yet. When none can, there is no engine in use to show.
+    /// not answered yet. When none can, the settings have no engine to show as
+    /// chosen. `engine` is then still the one the user chose, and a session
+    /// that is running keeps its translator or tries that engine.
     public var canTranslate: Bool {
         support.map { !$0.engines(for: pair).isEmpty } ?? true
     }

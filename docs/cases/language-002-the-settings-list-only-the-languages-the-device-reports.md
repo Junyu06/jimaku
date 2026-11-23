@@ -13,6 +13,6 @@ status: not-run
 
 - Physical iPad: not run.
 - Physical iPhone: not run.
-- The simulator has no recognizer and no language packs to ask, and reports every language as recognized and every language pack as installed, so it cannot show a language being left out. The rules for what is offered given a report are covered by tests of JimakuCore (`LanguageSupport`): a language the device does not recognize, or that nothing can translate, is not offered, and when the device can do no pair at all a session does not start.
+- The simulator has no recognizer and no language packs to ask, and reports every language that can be spoken as recognized and every language pack as installed, so it cannot show a language being left out. The rules for what is offered given a report are covered by tests of JimakuCore (`LanguageSupport`): a language the device does not recognize, or that nothing can translate, is not offered, and when the device can do no pair at all a session does not start.
 - Before the system has answered, the list holds only the language already chosen, whether or not the device can do it; that is why the steps wait. The language in use is always in the list, also when the device has answered that it cannot do it; a device that can do no pair at all is language-009.
 - Which engines can be chosen for a pair is translation-008 (seen in a simulator) and translation-009 (a device that cannot run the model, not run).
