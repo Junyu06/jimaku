@@ -10,15 +10,13 @@ enum AppleIntelligenceError: LocalizedError {
     case languageNotSupported(CaptionLanguage)
 
     var errorDescription: String? {
-        let reason =
-            switch self {
-            case .deviceNotEligible: "这台设备不支持 Apple Intelligence"
-            case .notEnabled: "系统设置里还没打开 Apple Intelligence"
-            case .modelNotReady: "Apple Intelligence 的模型还在下载或准备中"
-            case .unavailable: "Apple Intelligence 现在用不了"
-            case .languageNotSupported(let language): "Apple Intelligence 不支持\(language.writtenName)"
-            }
-        return "\(reason)。可以把「翻译引擎」换成语言包。"
+        switch self {
+        case .deviceNotEligible: "这台设备不支持 Apple Intelligence。"
+        case .notEnabled: "系统设置里还没打开 Apple Intelligence。"
+        case .modelNotReady: "Apple Intelligence 的模型还在下载或准备中。"
+        case .unavailable: "Apple Intelligence 现在用不了。"
+        case .languageNotSupported(let language): "Apple Intelligence 不支持\(language.writtenName)。"
+        }
     }
 }
 

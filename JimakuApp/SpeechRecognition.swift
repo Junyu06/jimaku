@@ -80,11 +80,22 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         // then a final version, which is what Transcript expects.
         let transcriber = SpeechTranscriber(locale: locale, preset: .progressiveTranscription)
 
-        // Download the language's model if the device does not have it yet.
-        if await AssetInventory.status(forModules: [transcriber]) != .installed,
-            let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber])
-        {
-            try await request.downloadAndInstall()
+        // Download the language's model if the device does not have it yet. The
+        // system keeps the models of only so many locales for an app, so one
+        // used earlier is given up first when there is no room.
+        if await AssetInventory.status(forModules: [transcriber]) != .installed {
+            let reserved = await AssetInventory.reservedLocales
+            let giveUp = SpeechModelBudget.toRelease(
+                reserved: reserved.map { $0.identifier(.bcp47) },
+                wanted: locale.identifier(.bcp47),
+                maximum: AssetInventory.maximumReservedLocales
+            )
+            for old in reserved where giveUp.contains(old.identifier(.bcp47)) {
+                await AssetInventory.release(reservedLocale: old)
+            }
+            if let request = try await AssetInventory.assetInstallationRequest(supporting: [transcriber]) {
+                try await request.downloadAndInstall()
+            }
         }
         try Task.checkCancellation()
 
@@ -109,8 +120,7 @@ final class SystemSpeechRecognizer: SpeechRecognizing {
         resultsTask = Task {
             do {
                 for try await result in transcriber.results {
-                    // Chinese comes with a space before each comma and full stop.
-                    let text = CaptionText.closingUpMarks(String(result.text.characters))
+                    let text = language.tidying(String(result.text.characters))
                     updatesContinuation.yield(
                         Heard(update: result.isFinal ? .final(text) : .partial(text), end: result.range.end.seconds))
                 }

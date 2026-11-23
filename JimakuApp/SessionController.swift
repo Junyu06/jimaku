@@ -24,63 +24,22 @@ final class SessionController {
     private(set) var transcript = Transcript()
 
     /// A message for the user when something went wrong. Nil when all is well.
-    var notice: String? { windowNotice ?? recognitionNotice ?? translationNotice }
+    var notice: String? { windowNotice ?? recognitionNotice ?? translationNotice ?? packNotice }
+
+    /// The languages and the engine: what the user chose, what the device can
+    /// do, and what a session uses. The rules are in `LanguageSettings`.
+    private(set) var settings: LanguageSettings {
+        didSet {
+            guard settings.chosen != oldValue.chosen || settings.chosenEngine != oldValue.chosenEngine else { return }
+            UserDefaults.standard.set(settings.chosen.spoken.identifier, forKey: Self.spokenKey)
+            UserDefaults.standard.set(settings.chosen.target.identifier, forKey: Self.targetKey)
+            UserDefaults.standard.set(settings.chosenEngine.rawValue, forKey: Self.engineKey)
+        }
+    }
 
     /// The language spoken in what the user is watching, and the one captions
-    /// are translated into. Changed with `choose(spoken:)` and `choose(target:)`.
-    private(set) var languages: LanguagePair {
-        didSet {
-            UserDefaults.standard.set(languages.spoken.identifier, forKey: Self.spokenKey)
-            UserDefaults.standard.set(languages.target.identifier, forKey: Self.targetKey)
-        }
-    }
-
-    /// What this device can do with the languages. Nil until the system has
-    /// answered; until then the settings offer only what is already chosen.
-    private(set) var support: LanguageSupport?
-
-    /// The engine the user wants to translate with. Can be changed while a
-    /// session runs. `activeEngine` is the one in use.
-    var engine: TranslationEngine {
-        didSet {
-            UserDefaults.standard.set(engine.rawValue, forKey: Self.engineKey)
-            guard engine != oldValue, session.isActive else { return }
-            prepareTranslation()
-        }
-    }
-
-    /// The engine that translates the chosen languages: the wanted one, or the
-    /// other when the wanted one cannot do them.
-    var activeEngine: TranslationEngine {
-        support?.engine(preferring: engine, for: languages) ?? engine
-    }
-
-    /// The spoken languages to offer, with the chosen one always among them.
-    /// Choosing one of the target's family swaps the two.
-    var spokenChoices: [CaptionLanguage] {
-        let offered = support?.spokenChoices ?? []
-        return CaptionLanguage.all.filter { offered.contains($0) || $0 == languages.spoken }
-    }
-
-    /// The languages to offer as what captions are translated into, with the
-    /// chosen one always among them.
-    var targetChoices: [CaptionLanguage] {
-        let offered = support?.targetChoices ?? []
-        return CaptionLanguage.all.filter { offered.contains($0) || $0 == languages.target }
-    }
-
-    /// The engines to offer for the chosen languages, with the one in use always
-    /// among them.
-    var engineChoices: [TranslationEngine] {
-        let usable = support?.engines(for: languages) ?? TranslationEngine.allCases
-        return TranslationEngine.allCases.filter { usable.contains($0) || $0 == activeEngine }
-    }
-
-    /// Whether the chosen languages need a language pack that the system offers
-    /// and has not downloaded.
-    var needsLanguagePack: Bool {
-        activeEngine == .languagePack && support?.packStatus(for: languages) == .downloadable
-    }
+    /// are translated into.
+    var languages: LanguagePair { settings.pair }
 
     /// How captions look. Changes show in the window at once.
     var style: CaptionStyle {
@@ -126,6 +85,8 @@ final class SessionController {
     private var windowNotice: String?
     private var recognitionNotice: String?
     private var translationNotice: String?
+    /// Why a language pack the user asked for did not arrive.
+    private var packNotice: String?
 
     private var recognition: CaptionPlaceholder.Readiness = .preparing
     private var pipeline = TranslationPipeline()
@@ -146,6 +107,11 @@ final class SessionController {
     /// Character widths already measured, by row role and column count.
     private var measuredWidths: [String: GlyphWidths] = [:]
     private var translator: (any PreparedTranslator)?
+    /// The engine and language pack the session's translator was last prepared
+    /// with. Nil outside a session.
+    private var prepared: LanguageSettings.Preparation?
+    /// Looks again for a language pack that is being downloaded.
+    private var packWatch: Task<Void, Never>?
 
     /// Current for the running session; stale once it ends.
     private var sessionGeneration = Generation()
@@ -162,13 +128,15 @@ final class SessionController {
 
     init() {
         let defaults = UserDefaults.standard
-        languages = LanguagePair.restored(
-            spoken: defaults.string(forKey: Self.spokenKey),
-            target: defaults.string(forKey: Self.targetKey),
-            legacySpoken: defaults.string(forKey: Self.legacySpokenKey),
-            preferred: Locale.preferredLanguages
+        settings = LanguageSettings(
+            chosen: LanguagePair.restored(
+                spoken: defaults.string(forKey: Self.spokenKey),
+                target: defaults.string(forKey: Self.targetKey),
+                legacySpoken: defaults.string(forKey: Self.legacySpokenKey),
+                preferred: Locale.preferredLanguages
+            ),
+            engine: defaults.string(forKey: Self.engineKey).flatMap(TranslationEngine.init(rawValue:)) ?? .languagePack
         )
-        engine = defaults.string(forKey: Self.engineKey).flatMap(TranslationEngine.init(rawValue:)) ?? .languagePack
         style = CaptionStyle(
             textSize: defaults.string(forKey: Self.textSizeKey).flatMap(CaptionStyle.TextSize.init(rawValue:))
                 ?? .medium,
@@ -200,37 +168,59 @@ final class SessionController {
     // MARK: Languages
 
     /// Asks the system again what it can do with the languages: when the app
-    /// opens, when it comes back to the front, and after a language pack was
-    /// downloaded. A choice the device cannot do gives way to one it can.
+    /// opens, when it comes back to the front, and around the download of a
+    /// language pack.
     func refreshLanguageSupport() {
-        Task { [weak self] in
-            guard let self else { return }
-            let support = await self.supportSource.support()
-            let hadPack = self.needsLanguagePack
-            self.support = support
-            guard self.session.isActive else {
-                let settled = support.settled(self.languages, keeping: .spoken)
-                if settled != self.languages { self.languages = settled }
-                return
-            }
-            // The pack a running session was missing has arrived.
-            if hadPack, !self.needsLanguagePack, !self.pipeline.isTranslationAvailable {
-                self.prepareTranslation()
+        Task { [weak self] in await self?.askDevice() }
+    }
+
+    /// Asks the system and takes its answer. Answers can come back out of
+    /// order; `LanguageSettings` drops one that is older than what it holds.
+    private func askDevice() async {
+        let question = settings.beginAsking()
+        let support = await supportSource.support()
+        guard settings.take(support, asked: question) else { return }
+        if !settings.needsLanguagePack { packNotice = nil }
+        reconcileTranslation()
+    }
+
+    func choose(spoken: CaptionLanguage) {
+        settings.choose(spoken: spoken)
+    }
+
+    func choose(target: CaptionLanguage) {
+        settings.choose(target: target)
+    }
+
+    /// Can be changed while a session runs.
+    func choose(engine: TranslationEngine) {
+        settings.chosenEngine = engine
+        reconcileTranslation()
+    }
+
+    /// The system's download sheet for a language pack was closed, with the
+    /// error it gave if any. The download may still be going on, so the pack is
+    /// looked for again every few seconds for a minute.
+    func languagePackRequestEnded(_ error: (any Error)?) {
+        packNotice = error.map { "语言包没下载成：\($0.localizedDescription)" }
+        packWatch?.cancel()
+        packWatch = Task { [weak self] in
+            for _ in 0..<20 {
+                await self?.askDevice()
+                guard let self, self.settings.needsLanguagePack, !Task.isCancelled else { return }
+                try? await Task.sleep(for: .seconds(3))
             }
         }
     }
 
-    /// The languages cannot be changed while a session runs.
-    func choose(spoken: CaptionLanguage) {
-        guard !session.isActive else { return }
-        let chosen = languages.choosing(spoken: spoken)
-        languages = support?.settled(chosen, keeping: .spoken) ?? chosen
-    }
-
-    func choose(target: CaptionLanguage) {
-        guard !session.isActive else { return }
-        let chosen = languages.choosing(target: target)
-        languages = support?.settled(chosen, keeping: .target) ?? chosen
+    /// Prepares the running session's translator again when what it was
+    /// prepared with no longer holds: another engine is in use, or its language
+    /// pack has arrived.
+    private func reconcileTranslation() {
+        guard session.isActive, let prepared,
+            settings.needsPreparingAgain(after: prepared, isReady: translator != nil)
+        else { return }
+        prepareTranslation()
     }
 
     // MARK: Starting and stopping
@@ -253,6 +243,8 @@ final class SessionController {
         windowNotice = nil
         recognitionNotice = nil
         translationNotice = nil
+        // The languages stay as they are until the session ends.
+        settings.lock()
         transcript = Transcript(rules: languages.spoken.chunkRules)
         pipeline.reset()
         board = CaptionBoard(layout: layout)
@@ -333,6 +325,8 @@ final class SessionController {
         translatorGeneration.invalidate()
         translatorToken = nil
         translator = nil
+        prepared = nil
+        settings.unlock()
         translations.reset()
         pipeline.reset()
         recognition = .preparing
@@ -487,8 +481,14 @@ final class SessionController {
         pipeline.setReadiness(.preparing)
         refreshWindow()
 
-        let source = source(for: activeEngine)
+        prepared = settings.preparation
+        let engine = settings.engine
+        let source = source(for: engine)
         let languages = languages
+        // Changing the engine helps only when the other one can do these languages.
+        let hint =
+            engine == .appleIntelligence && settings.engineChoices.contains(.languagePack)
+            ? "可以把「翻译引擎」换成语言包。" : ""
         Task { [weak self] in
             do {
                 let prepared = try await source.prepare(for: languages)
@@ -500,7 +500,7 @@ final class SessionController {
             } catch {
                 guard let self, self.translatorGeneration.isCurrent(token) else { return }
                 self.pipeline.setReadiness(.failed)
-                self.translationNotice = error.localizedDescription
+                self.translationNotice = error.localizedDescription + hint
                 self.refreshWindow()
             }
         }

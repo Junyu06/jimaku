@@ -7,9 +7,6 @@ import Translation
 /// stops a session, the settings, and the captions of the current session.
 struct StartView: View {
     @State private var controller = SessionController()
-    /// The language pack the user asked to download. The system shows its own
-    /// sheet for it.
-    @State private var packRequest: TranslationSession.Configuration?
     @Environment(\.scenePhase) private var scenePhase
 
     private var isRunning: Bool { controller.session.isActive }
@@ -58,40 +55,7 @@ struct StartView: View {
             }
 
             Section("设置") {
-                Picker("说话的语言", selection: spoken) {
-                    ForEach(controller.spokenChoices) { language in
-                        Text(language.spokenName).tag(language)
-                    }
-                }
-                .disabled(isRunning)
-                .accessibilityIdentifier("language")
-
-                Picker("翻译成", selection: target) {
-                    ForEach(controller.targetChoices) { language in
-                        Text(language.writtenName).tag(language)
-                    }
-                }
-                .disabled(isRunning)
-                .accessibilityIdentifier("target")
-
-                if controller.engineChoices.count > 1 {
-                    Picker("翻译引擎", selection: engine) {
-                        ForEach(controller.engineChoices, id: \.self) { engine in
-                            switch engine {
-                            case .languagePack: Text("语言包").tag(engine)
-                            case .appleIntelligence: Text("Apple Intelligence").tag(engine)
-                            }
-                        }
-                    }
-                    .accessibilityIdentifier("engine")
-                }
-
-                if controller.needsLanguagePack {
-                    LabeledContent("语言包还没下载") {
-                        Button("下载") { requestLanguagePack() }
-                            .accessibilityIdentifier("downloadLanguagePack")
-                    }
-                }
+                LanguageRows(controller: controller, isRunning: isRunning)
 
                 Picker("显示", selection: $controller.style.mode) {
                     Text("原文和译文").tag(CaptionStyle.Mode.originalAndTranslation)
@@ -145,38 +109,6 @@ struct StartView: View {
             // A language pack may have been downloaded in the system's settings.
             if phase == .active { controller.refreshLanguageSupport() }
         }
-        .translationTask(packRequest) { session in
-            // Shows the system's sheet, which asks before it downloads. The
-            // session is not Sendable and this call leaves the main actor; that
-            // is safe because nothing else uses this session.
-            nonisolated(unsafe) let unisolated = session
-            try? await unisolated.prepareTranslation()
-            controller.refreshLanguageSupport()
-        }
-    }
-
-    private var spoken: Binding<CaptionLanguage> {
-        Binding(get: { controller.languages.spoken }, set: { controller.choose(spoken: $0) })
-    }
-
-    private var target: Binding<CaptionLanguage> {
-        Binding(get: { controller.languages.target }, set: { controller.choose(target: $0) })
-    }
-
-    private var engine: Binding<TranslationEngine> {
-        Binding(get: { controller.activeEngine }, set: { controller.engine = $0 })
-    }
-
-    /// Asks the system for the language pack of the chosen languages. Asking for
-    /// the same pair again runs the request again.
-    private func requestLanguagePack() {
-        let source = controller.languages.spoken.translationLanguage
-        let target = controller.languages.target.translationLanguage
-        if packRequest?.source == source, packRequest?.target == target {
-            packRequest?.invalidate()
-        } else {
-            packRequest = TranslationSession.Configuration(source: source, target: target)
-        }
     }
 
     /// What the user should know about the audio. Nil when audio is arriving.
@@ -216,6 +148,97 @@ private struct CaptionPreview: UIViewRepresentable {
         override func layoutSubviews() {
             super.layoutSubviews()
             hostedLayer?.frame = bounds
+        }
+    }
+}
+
+/// The rows that choose the languages and the engine.
+///
+/// A view of its own, reading only the settings: the form around it is drawn
+/// again with every caption, and a menu whose rows are made again while it is
+/// open does not take a tap.
+private struct LanguageRows: View {
+    let controller: SessionController
+    let isRunning: Bool
+
+    /// The language pack the user asked to download. The system shows its own
+    /// sheet for it.
+    @State private var packRequest: TranslationSession.Configuration?
+
+    var body: some View {
+        Group {
+            Picker("说话的语言", selection: spoken) {
+                ForEach(controller.settings.spokenChoices) { language in
+                    Text(language.spokenName).tag(language)
+                }
+            }
+            .disabled(isRunning)
+            .accessibilityIdentifier("language")
+
+            Picker("翻译成", selection: target) {
+                ForEach(controller.settings.targetChoices) { language in
+                    Text(language.writtenName).tag(language)
+                }
+            }
+            .disabled(isRunning)
+            .accessibilityIdentifier("target")
+
+            if controller.settings.engineChoices.count > 1 {
+                Picker("翻译引擎", selection: engine) {
+                    ForEach(controller.settings.engineChoices, id: \.self) { engine in
+                        switch engine {
+                        case .languagePack: Text("语言包").tag(engine)
+                        case .appleIntelligence: Text("Apple Intelligence").tag(engine)
+                        }
+                    }
+                }
+                .accessibilityIdentifier("engine")
+            }
+
+            if controller.settings.needsLanguagePack {
+                LabeledContent("语言包还没下载") {
+                    Button("下载") { requestLanguagePack() }
+                        .accessibilityIdentifier("downloadLanguagePack")
+                }
+            }
+        }
+        .translationTask(packRequest) { session in
+            // Shows the system's sheet, which asks before it downloads. The
+            // session is not Sendable and this call leaves the main actor; that
+            // is safe because nothing else uses this session.
+            nonisolated(unsafe) let unisolated = session
+            do {
+                try await unisolated.prepareTranslation()
+                controller.languagePackRequestEnded(nil)
+            } catch is CancellationError {
+                controller.languagePackRequestEnded(nil)
+            } catch {
+                controller.languagePackRequestEnded(error)
+            }
+        }
+    }
+
+    private var spoken: Binding<CaptionLanguage> {
+        Binding(get: { controller.languages.spoken }, set: { controller.choose(spoken: $0) })
+    }
+
+    private var target: Binding<CaptionLanguage> {
+        Binding(get: { controller.languages.target }, set: { controller.choose(target: $0) })
+    }
+
+    private var engine: Binding<TranslationEngine> {
+        Binding(get: { controller.settings.engine }, set: { controller.choose(engine: $0) })
+    }
+
+    /// Asks the system for the language pack of the chosen languages. Asking for
+    /// the same pair again runs the request again.
+    private func requestLanguagePack() {
+        let source = controller.languages.spoken.translationLanguage
+        let target = controller.languages.target.translationLanguage
+        if packRequest?.source == source, packRequest?.target == target {
+            packRequest?.invalidate()
+        } else {
+            packRequest = TranslationSession.Configuration(source: source, target: target)
         }
     }
 }
