@@ -30,15 +30,6 @@ public struct ChunkRules: Equatable, Sendable {
     public static let english = ChunkRules(clauseMinimum: 36, limit: 72)
 }
 
-extension SourceLanguage {
-    public var chunkRules: ChunkRules {
-        switch self {
-        case .english: .english
-        case .japanese: .japanese
-        }
-    }
-}
-
 extension CaptionText {
     /// Whether a character is something that was said, as opposed to punctuation or
     /// spacing. The recognizer keeps changing its mind about punctuation long after
@@ -66,6 +57,25 @@ extension CaptionText {
             index = text.index(after: index)
         }
         return String(text[index...]).trimmed
+    }
+
+    /// `text` without the spaces that stand before a wide mark closing a phrase.
+    /// The recognizer writes Chinese with a space before each comma and full
+    /// stop. Only spaces go, so the spoken characters and their order stay.
+    public static func closingUpMarks(_ text: String) -> String {
+        var result: [Character] = []
+        var spaces: [Character] = []
+        for character in text {
+            if character.isWhitespace {
+                spaces.append(character)
+                continue
+            }
+            let closes = width(of: character) == 2 && !isSpoken(character) && !openers.contains(character)
+            if !closes || result.isEmpty { result += spaces }
+            spaces.removeAll(keepingCapacity: true)
+            result.append(character)
+        }
+        return String(result + spaces)
     }
 
     /// Cuts pieces off the front of `text`, each a sentence, a clause, or a run of
