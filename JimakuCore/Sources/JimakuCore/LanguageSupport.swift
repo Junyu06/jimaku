@@ -18,7 +18,7 @@ public enum EngineObstacle: Equatable, Sendable {
     case sameLanguage
     /// The system gave no answer about this engine and these languages: there
     /// is no report on the pair's language pack, or the model confirmed none
-    /// of the app's languages. The engine is not used, and no reason is made up.
+    /// of the app's languages. The engine is not offered, and no reason is made up.
     case notReported
 }
 

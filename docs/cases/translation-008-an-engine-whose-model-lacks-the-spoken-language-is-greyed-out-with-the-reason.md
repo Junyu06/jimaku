@@ -5,9 +5,9 @@ status: simulated
 
 # An engine whose model lacks the spoken language is greyed out with the reason
 
-- Fixture: the app with its interface in Chinese, where the system has answered and the on-device model works in Japanese and English and not in Hindi; 说话的语言 (spoken language) 日语, 翻译成 (translate into) 英语, and 翻译引擎 (translation engine) set to 语言包 by choosing it from the list while both engines can be chosen.
-- Input: choose 印地语 (Hindi) as 说话的语言, open 翻译引擎, tap the line for Apple Intelligence, close the list, choose 日语 as 说话的语言 again, and open 翻译引擎.
-- Expected result: with Hindi, the list shows 语言包 with the check mark and a grey line "Apple Intelligence（不支持印地语）". With 日语 again, the list shows both engines as lines that can be chosen, with the check mark on 语言包.
+- Fixture: the app with its interface in Chinese, where the system has answered, Hindi is recognized and has a language pack into English, and the on-device model works in Japanese and English and not in Hindi; 说话的语言 (spoken language) 日语, 翻译成 (translate into) 英语, and 翻译引擎 (translation engine) set to 语言包 by choosing it from the list while both engines can be chosen.
+- Input: choose 印地语 (Hindi) as 说话的语言, open 翻译引擎, tap the line for Apple Intelligence, close the list, choose 日语 as 说话的语言 again, close the app, open it again, and open 翻译引擎.
+- Expected result: with Hindi, the list shows 语言包 with the check mark and a grey line "Apple Intelligence（不支持印地语）". With 日语 again and the app opened again, the list shows both engines as lines that can be chosen, with the check mark on 语言包.
 - Property: an engine that cannot translate the spoken language stays in the list, says why, and cannot be chosen.
 
 ## Evidence

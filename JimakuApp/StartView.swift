@@ -203,8 +203,9 @@ private struct LanguageRows: View {
         .disabled(isRunning)
         .accessibilityIdentifier("target")
 
-        // Both engines are always listed. One that cannot translate these
-        // languages here is greyed out, with the reason after its name. The
+        // While the device reports an engine that can translate these
+        // languages, or has not answered yet, both engines are listed. One
+        // that cannot is greyed out, with the reason after its name. The
         // reason is part of the one line: a menu made by a picker shows no
         // second line.
         if controller.settings.canTranslate {
@@ -218,12 +219,13 @@ private struct LanguageRows: View {
             }
             .accessibilityIdentifier("engine")
         } else {
-            // The device reported that no engine can translate these
-            // languages, so a picker would have no line to show as chosen. A
-            // session that is running goes on with what it has and says what
-            // goes wrong.
+            // The device's answer names no engine that can translate these
+            // languages, whether it denied them or said nothing about them,
+            // so a picker would have no line to show as chosen. The row says
+            // only that. A session that is running goes on with what it has
+            // and says what goes wrong.
             LabeledContent("翻译引擎") {
-                Text("这两种语言现在翻译不了")
+                Text("系统没有报告可用的翻译引擎")
             }
             .accessibilityIdentifier("engine")
         }

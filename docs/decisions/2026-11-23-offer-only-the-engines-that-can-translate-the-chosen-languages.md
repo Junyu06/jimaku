@@ -1,5 +1,5 @@
 date: 2026-11-23
-status: superseded in part by 2026-11-23-list-both-engines-and-grey-out-the-one-that-cannot-translate-with-the-reason.md: an engine that cannot translate the pair is now listed greyed out, also on a device that can never run the model, and the choice of engine is always shown. Which engine is used and when its translator is prepared again stand.
+status: superseded in part by 2026-11-23-list-both-engines-and-grey-out-the-one-that-cannot-translate-with-the-reason.md: an engine that cannot translate the pair is now listed greyed out, also on a device that can never run the model, and the choice of engine is shown also when one engine is left. Which engine is used and when its translator is prepared again stand.
 supersedes: none
 
 # Offer only the engines that can translate the chosen languages
