@@ -122,6 +122,104 @@ struct LanguageSettingsTests {
         #expect(settings.pair == LanguagePair(spoken: .simplifiedChinese, target: .english))
     }
 
+    @Test("Choosing one side leaves the other side of the choice alone, even while it has given way")
+    func choosingKeepsTheOtherSideOfTheChoice() {
+        // The device can do English and Japanese into Simplified Chinese only.
+        var settings = settings(LanguagePair(spoken: .english, target: .french))
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.pair == toChinese(.english))
+
+        settings.choose(spoken: .japanese)
+        #expect(settings.pair == toChinese(.japanese))
+        #expect(settings.chosen == LanguagePair(spoken: .japanese, target: .french))
+
+        // Japanese into French becomes possible: French comes back.
+        var better = device
+        better.packs[LanguagePair(spoken: .japanese, target: .french)] = .installed
+        settings.take(better, asked: settings.beginAsking())
+        #expect(settings.pair == LanguagePair(spoken: .japanese, target: .french))
+    }
+
+    @Test("Choosing a target leaves the spoken side of the choice alone")
+    func choosingATargetKeepsTheSpokenChoice() {
+        var device = device
+        device.packs[LanguagePair(spoken: .japanese, target: .english)] = .installed
+        var settings = settings(toChinese(.korean))
+        settings.take(device, asked: settings.beginAsking())
+        settings.choose(target: .english)
+        #expect(settings.pair == LanguagePair(spoken: .japanese, target: .english))
+        #expect(settings.chosen == LanguagePair(spoken: .korean, target: .english))
+    }
+
+    @Test("Choosing the language that is shown on the other side swaps what is shown")
+    func choosingSwapsWhatIsShown() {
+        // Chosen English into French, shown English into Simplified Chinese.
+        var device = device
+        device.recognizable.insert(.simplifiedChinese)
+        device.packs[LanguagePair(spoken: .simplifiedChinese, target: .english)] = .installed
+        var settings = settings(LanguagePair(spoken: .english, target: .french))
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.pair == toChinese(.english))
+        settings.choose(spoken: .simplifiedChinese)
+        #expect(settings.chosen == LanguagePair(spoken: .simplifiedChinese, target: .english))
+        #expect(settings.pair == LanguagePair(spoken: .simplifiedChinese, target: .english))
+    }
+
+    @Test("Choosing a spoken language of the family of a target that has given way does not leave the choice untranslatable")
+    func choosingTheHiddenTargetsLanguage() {
+        // Chosen English into French, shown English into Simplified Chinese.
+        var device = device
+        device.recognizable.insert(.french)
+        device.packs[toChinese(.french)] = .installed
+        var settings = settings(LanguagePair(spoken: .english, target: .french))
+        settings.take(device, asked: settings.beginAsking())
+        settings.choose(spoken: .french)
+        #expect(settings.chosen == toChinese(.french))
+        #expect(settings.pair == toChinese(.french))
+    }
+
+    @Test("The side chosen last is restored with the choice")
+    func keptSideIsRestored() {
+        // English into Simplified Chinese, and Japanese into French.
+        let narrow = LanguageSupport(
+            recognizable: [.english, .japanese],
+            packs: [
+                toChinese(.english): .installed,
+                LanguagePair(spoken: .japanese, target: .french): .installed,
+            ]
+        )
+        var settings = settings(toChinese(.english))
+        settings.take(narrow, asked: settings.beginAsking())
+        settings.choose(target: .french)
+        #expect(settings.pair == LanguagePair(spoken: .japanese, target: .french))
+        #expect(settings.kept == .target)
+
+        // The app is opened again with what was stored.
+        var reopened = LanguageSettings(chosen: settings.chosen, engine: settings.chosenEngine, kept: settings.kept)
+        reopened.take(narrow, asked: reopened.beginAsking())
+        #expect(reopened.pair == LanguagePair(spoken: .japanese, target: .french))
+    }
+
+    // MARK: Whether a session can start
+
+    @Test("A session can start before the device has answered, and when it can do the pair")
+    func canStart() {
+        var settings = settings(toChinese(.french))
+        #expect(settings.canStart)
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.pair == toChinese(.english))
+        #expect(settings.canStart)
+    }
+
+    @Test("A session cannot start when the device has answered that it can do nothing")
+    func cannotStart() {
+        var settings = settings(toChinese(.english))
+        settings.take(LanguageSupport(), asked: settings.beginAsking())
+        #expect(settings.pair == toChinese(.english))
+        #expect(!settings.canStart)
+        #expect(settings.chosen == toChinese(.english))
+    }
+
     // MARK: Answers out of order
 
     @Test("An answer to an earlier question does not replace the answer to a later one")
@@ -219,13 +317,13 @@ struct LanguageSettingsTests {
         settings.lock()
         let prepared = settings.preparation
         #expect(prepared.engine == .appleIntelligence)
-        #expect(!settings.needsPreparingAgain(after: prepared, isReady: false))
+        #expect(!settings.needsPreparingAgain(after: prepared, isReady: false, missedPack: false))
         // The answer: the model cannot do Korean, the pack engine is in use.
         settings.take(device, asked: settings.beginAsking())
         #expect(settings.engine == .languagePack)
-        #expect(settings.needsPreparingAgain(after: prepared, isReady: false))
-        #expect(settings.needsPreparingAgain(after: prepared, isReady: true))
-        #expect(!settings.needsPreparingAgain(after: settings.preparation, isReady: true))
+        #expect(settings.needsPreparingAgain(after: prepared, isReady: false, missedPack: false))
+        #expect(settings.needsPreparingAgain(after: prepared, isReady: true, missedPack: false))
+        #expect(!settings.needsPreparingAgain(after: settings.preparation, isReady: true, missedPack: false))
     }
 
     @Test("Choosing the engine that is already in use prepares nothing again")
@@ -236,7 +334,7 @@ struct LanguageSettingsTests {
         let prepared = settings.preparation
         #expect(prepared.engine == .languagePack)
         settings.chosenEngine = .languagePack
-        #expect(!settings.needsPreparingAgain(after: prepared, isReady: true))
+        #expect(!settings.needsPreparingAgain(after: prepared, isReady: true, missedPack: false))
     }
 
     @Test("A translator that is not ready is prepared again once its language pack has arrived")
@@ -251,11 +349,31 @@ struct LanguageSettingsTests {
         downloaded.packs[toChinese(.korean)] = .installed
         settings.take(downloaded, asked: settings.beginAsking())
         // Still preparing, or failed for want of the pack: either way, again.
-        #expect(settings.needsPreparingAgain(after: prepared, isReady: false))
+        #expect(settings.needsPreparingAgain(after: prepared, isReady: false, missedPack: false))
         // One that got ready meanwhile is left alone.
-        #expect(!settings.needsPreparingAgain(after: prepared, isReady: true))
+        #expect(!settings.needsPreparingAgain(after: prepared, isReady: true, missedPack: false))
         // And one prepared after the pack arrived is not prepared a second time.
-        #expect(!settings.needsPreparingAgain(after: settings.preparation, isReady: false))
+        #expect(!settings.needsPreparingAgain(after: settings.preparation, isReady: false, missedPack: false))
+    }
+
+    @Test("A translator that failed for want of its pack is prepared again when the pack is installed, even if it was thought installed before")
+    func prepareAgainAfterAMissingPack() {
+        // The report held says installed, but the pack had been removed.
+        var settings = settings(toChinese(.english))
+        settings.take(device, asked: settings.beginAsking())
+        settings.lock()
+        let prepared = settings.preparation
+        #expect(prepared.pack == .installed)
+        // Preparing found the pack missing. The next report agrees.
+        var removed = device
+        removed.packs[toChinese(.english)] = .downloadable
+        settings.take(removed, asked: settings.beginAsking())
+        #expect(!settings.needsPreparingAgain(after: prepared, isReady: false, missedPack: true))
+        // The pack is downloaded again.
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.needsPreparingAgain(after: prepared, isReady: false, missedPack: true))
+        // Without that failure, a translator thought to have its pack is left to finish.
+        #expect(!settings.needsPreparingAgain(after: prepared, isReady: false, missedPack: false))
     }
 
     @Test("A translator prepared before the device answered is prepared again when the pack turns out installed and it is not ready")
@@ -265,8 +383,8 @@ struct LanguageSettingsTests {
         let prepared = settings.preparation
         #expect(prepared.pack == nil)
         settings.take(device, asked: settings.beginAsking())
-        #expect(settings.needsPreparingAgain(after: prepared, isReady: false))
-        #expect(!settings.needsPreparingAgain(after: prepared, isReady: true))
+        #expect(settings.needsPreparingAgain(after: prepared, isReady: false, missedPack: false))
+        #expect(!settings.needsPreparingAgain(after: prepared, isReady: true, missedPack: false))
     }
 }
 
