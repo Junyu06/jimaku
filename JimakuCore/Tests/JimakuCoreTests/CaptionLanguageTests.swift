@@ -252,33 +252,47 @@ struct LanguageSupportTests {
                 == .modelLacksLanguage(.korean))
     }
 
-    @Test("On a device that can never run the language model, that is what is in its way, whatever the languages")
+    @Test("On a device that can never run the language model, that is what is in its way for any two languages")
     func deviceCannotRunTheModel() {
+        // Only the flag differs from `device`: the languages are still there.
         var device = device
         device.deviceRunsModel = false
-        device.modelLanguages = []
         #expect(device.obstacle(to: .appleIntelligence, for: toChinese(.english)) == .deviceCannotRunModel)
         #expect(device.obstacle(to: .appleIntelligence, for: toChinese(.korean)) == .deviceCannotRunModel)
         #expect(device.engines(for: toChinese(.english)) == [.languagePack])
+        #expect(device.engines(for: LanguagePair(spoken: .english, target: .traditionalChinese)) == [])
     }
 
-    @Test("What is in the language packs' way is that the system has none for the pair")
+    @Test("A pair the system said it has no language pack for has that in the packs' way")
     func noLanguagePack() {
+        var device = device
         let pair = LanguagePair(spoken: .english, target: .traditionalChinese)
+        device.packs[pair] = .unsupported
         #expect(device.obstacle(to: .languagePack, for: pair) == .noLanguagePack)
         #expect(device.obstacle(to: .appleIntelligence, for: pair) == nil)
     }
 
-    @Test("An engine is usable exactly when nothing is in its way")
-    func obstaclesAgreeWithEngines() {
-        for spoken in CaptionLanguage.all {
-            for target in CaptionLanguage.all {
-                let pair = LanguagePair(spoken: spoken, target: target)
-                for engine in TranslationEngine.allCases {
-                    #expect(device.engines(for: pair).contains(engine) == (device.obstacle(to: engine, for: pair) == nil))
-                }
-            }
-        }
+    @Test("A pair the system was not asked about cannot be translated by the packs, and no reason is made up for it")
+    func packNotReported() {
+        let pair = LanguagePair(spoken: .english, target: .traditionalChinese)
+        #expect(device.obstacle(to: .languagePack, for: pair) == .notReported)
+        #expect(!device.engines(for: pair).contains(.languagePack))
+    }
+
+    @Test("A model that reported no language at all is not said to lack a particular one")
+    func modelReportedNothing() {
+        var device = device
+        device.modelLanguages = []
+        #expect(device.obstacle(to: .appleIntelligence, for: toChinese(.english)) == .notReported)
+        #expect(device.engines(for: toChinese(.english)) == [.languagePack])
+    }
+
+    @Test("A device that reported nothing has nothing confirmed in either engine's way")
+    func nothingReported() {
+        let nothing = LanguageSupport()
+        #expect(nothing.obstacle(to: .languagePack, for: toChinese(.english)) == .notReported)
+        #expect(nothing.obstacle(to: .appleIntelligence, for: toChinese(.english)) == .notReported)
+        #expect(nothing.engines(for: toChinese(.english)) == [])
     }
 
     @Test("Two forms of one language have that in the way of both engines")

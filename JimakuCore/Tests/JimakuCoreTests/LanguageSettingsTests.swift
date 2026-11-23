@@ -107,6 +107,41 @@ struct LanguageSettingsTests {
         #expect(settings.obstacle(to: .appleIntelligence) == .deviceCannotRunModel)
     }
 
+    @Test("An engine with something in its way cannot be chosen, and the earlier choice stays")
+    func unusableEngineIsNotChosen() {
+        var settings = settings(toChinese(.korean), engine: .languagePack)
+        settings.take(device, asked: settings.beginAsking())
+        let chose = settings.choose(engine: .appleIntelligence)
+        #expect(!chose)
+        #expect(settings.chosenEngine == .languagePack)
+        // With a pair both engines translate, the choice made earlier is still the one in use.
+        settings.choose(spoken: .english)
+        #expect(settings.engine == .languagePack)
+        let choseNow = settings.choose(engine: .appleIntelligence)
+        #expect(choseNow)
+        #expect(settings.engine == .appleIntelligence)
+    }
+
+    @Test("Before the device has answered, either engine can be chosen")
+    func anyEngineBeforeAnAnswer() {
+        var settings = settings(toChinese(.korean), engine: .languagePack)
+        let chose = settings.choose(engine: .appleIntelligence)
+        #expect(chose)
+        #expect(settings.chosenEngine == .appleIntelligence)
+    }
+
+    @Test("When no engine can translate the pair in use, the settings say so and keep the engine chosen")
+    func noUsableEngine() {
+        var settings = settings(toChinese(.english), engine: .appleIntelligence)
+        #expect(settings.canTranslate)
+        settings.take(LanguageSupport(), asked: settings.beginAsking())
+        #expect(!settings.canTranslate)
+        #expect(settings.chosenEngine == .appleIntelligence)
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.canTranslate)
+        #expect(settings.engine == .appleIntelligence)
+    }
+
     @Test("The choices offered always include what is in use")
     func choicesIncludeTheCurrent() {
         var settings = settings(toChinese(.korean))
