@@ -45,11 +45,13 @@ struct TranslationEngineTests {
 struct TranslationPromptTests {
     @Test("The instructions name both languages and ask for the translation alone")
     func instructions() {
-        let english = TranslationPrompt.instructions(from: .english)
-        #expect(english.contains("English"))
-        #expect(english.contains("Simplified Chinese"))
-        #expect(english.lowercased().contains("only"))
-        #expect(TranslationPrompt.instructions(from: .japanese).contains("Japanese"))
+        let english = TranslationPrompt.instructions(from: .english, to: .simplifiedChinese)
+        #expect(english.contains("from English into Simplified Chinese"))
+        #expect(english.contains("Simplified Chinese translation only"))
+        let japanese = TranslationPrompt.instructions(from: .japanese, to: .english)
+        #expect(japanese.contains("from Japanese into English"))
+        #expect(japanese.contains("English translation only"))
+        #expect(!japanese.contains("Chinese"))
     }
 
     @Test("A clean response is left alone")

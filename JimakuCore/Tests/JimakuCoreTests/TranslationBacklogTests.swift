@@ -58,11 +58,3 @@ struct TranslationBacklogTests {
         #expect(backlog.next() == nil)
     }
 }
-
-@Suite("TargetLanguage")
-struct TargetLanguageTests {
-    @Test("Captions are translated into Simplified Chinese")
-    func simplifiedChinese() {
-        #expect(TargetLanguage.identifier == "zh-Hans")
-    }
-}
