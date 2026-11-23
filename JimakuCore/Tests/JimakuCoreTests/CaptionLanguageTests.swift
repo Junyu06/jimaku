@@ -233,6 +233,61 @@ struct LanguageSupportTests {
         #expect(device.engines(for: LanguagePair(spoken: .english, target: .traditionalChinese)) == [.appleIntelligence])
     }
 
+    @Test("An engine that can translate a pair has nothing in its way")
+    func noObstacle() {
+        #expect(device.obstacle(to: .languagePack, for: toChinese(.english)) == nil)
+        #expect(device.obstacle(to: .appleIntelligence, for: toChinese(.english)) == nil)
+        // A pack that still has to be downloaded is not in the way.
+        #expect(device.obstacle(to: .languagePack, for: toChinese(.korean)) == nil)
+    }
+
+    @Test("What is in the language model's way is the language it does not work in, the spoken one first")
+    func modelLacksALanguage() {
+        #expect(device.obstacle(to: .appleIntelligence, for: toChinese(.korean)) == .modelLacksLanguage(.korean))
+        #expect(
+            device.obstacle(to: .appleIntelligence, for: LanguagePair(spoken: .english, target: .german))
+                == .modelLacksLanguage(.german))
+        #expect(
+            device.obstacle(to: .appleIntelligence, for: LanguagePair(spoken: .korean, target: .german))
+                == .modelLacksLanguage(.korean))
+    }
+
+    @Test("On a device that can never run the language model, that is what is in its way, whatever the languages")
+    func deviceCannotRunTheModel() {
+        var device = device
+        device.deviceRunsModel = false
+        device.modelLanguages = []
+        #expect(device.obstacle(to: .appleIntelligence, for: toChinese(.english)) == .deviceCannotRunModel)
+        #expect(device.obstacle(to: .appleIntelligence, for: toChinese(.korean)) == .deviceCannotRunModel)
+        #expect(device.engines(for: toChinese(.english)) == [.languagePack])
+    }
+
+    @Test("What is in the language packs' way is that the system has none for the pair")
+    func noLanguagePack() {
+        let pair = LanguagePair(spoken: .english, target: .traditionalChinese)
+        #expect(device.obstacle(to: .languagePack, for: pair) == .noLanguagePack)
+        #expect(device.obstacle(to: .appleIntelligence, for: pair) == nil)
+    }
+
+    @Test("An engine is usable exactly when nothing is in its way")
+    func obstaclesAgreeWithEngines() {
+        for spoken in CaptionLanguage.all {
+            for target in CaptionLanguage.all {
+                let pair = LanguagePair(spoken: spoken, target: target)
+                for engine in TranslationEngine.allCases {
+                    #expect(device.engines(for: pair).contains(engine) == (device.obstacle(to: engine, for: pair) == nil))
+                }
+            }
+        }
+    }
+
+    @Test("Two forms of one language have that in the way of both engines")
+    func sameFamilyObstacle() {
+        let pair = LanguagePair(spoken: .simplifiedChinese, target: .traditionalChinese)
+        #expect(device.obstacle(to: .languagePack, for: pair) == .sameLanguage)
+        #expect(device.obstacle(to: .appleIntelligence, for: pair) == .sameLanguage)
+    }
+
     @Test("Two forms of one language are never translated into each other")
     func sameFamily() {
         var device = device

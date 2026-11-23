@@ -77,6 +77,36 @@ struct LanguageSettingsTests {
         #expect(settings.engineChoices == [.languagePack, .appleIntelligence])
     }
 
+    @Test("Before the device has answered, nothing is said to be in an engine's way")
+    func noObstacleBeforeAnAnswer() {
+        let settings = settings(toChinese(.korean), engine: .appleIntelligence)
+        #expect(settings.obstacle(to: .appleIntelligence) == nil)
+        #expect(settings.obstacle(to: .languagePack) == nil)
+    }
+
+    @Test("What is in an engine's way is told for the pair in use, not the pair chosen")
+    func obstacleForThePairInUse() {
+        var settings = settings(toChinese(.korean), engine: .appleIntelligence)
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.obstacle(to: .appleIntelligence) == .modelLacksLanguage(.korean))
+        #expect(settings.obstacle(to: .languagePack) == nil)
+
+        // French gives way to English, which both engines translate.
+        settings.choose(spoken: .french)
+        #expect(settings.pair == toChinese(.english))
+        #expect(settings.obstacle(to: .appleIntelligence) == nil)
+    }
+
+    @Test("On a device that can never run the model, the settings say so for that engine")
+    func obstacleOnADeviceWithoutTheModel() {
+        var device = packsOnly
+        device.deviceRunsModel = false
+        var settings = settings(toChinese(.english), engine: .appleIntelligence)
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.engine == .languagePack)
+        #expect(settings.obstacle(to: .appleIntelligence) == .deviceCannotRunModel)
+    }
+
     @Test("The choices offered always include what is in use")
     func choicesIncludeTheCurrent() {
         var settings = settings(toChinese(.korean))
