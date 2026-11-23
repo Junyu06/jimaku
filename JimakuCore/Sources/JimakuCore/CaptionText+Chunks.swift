@@ -61,8 +61,9 @@ extension CaptionText {
 
     /// `text` without the spaces that stand before a wide mark closing a phrase.
     /// The recognizer writes Chinese with a space before each comma and full
-    /// stop. Only spaces go, so the spoken characters and their order stay. A
-    /// mark at the very start keeps the spaces before it.
+    /// stop. Only plain spaces go: a run with a line break, a tab, or a wide
+    /// space in it stays, and so does a run at the very start. The spoken
+    /// characters and their order are left as they were.
     public static func closingUpMarks(_ text: String) -> String {
         var result: [Character] = []
         var spaces: [Character] = []
@@ -71,7 +72,8 @@ extension CaptionText {
                 spaces.append(character)
                 continue
             }
-            if !closesPhrase(character) || result.isEmpty { result += spaces }
+            let plain = spaces.allSatisfy { $0 == " " }
+            if !(plain && closesPhrase(character)) || result.isEmpty { result += spaces }
             spaces.removeAll(keepingCapacity: true)
             result.append(character)
         }

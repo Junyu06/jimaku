@@ -45,6 +45,12 @@ public struct LanguageSupport: Equatable, Sendable {
         return engines
     }
 
+    /// Whether a session can run with `pair`: the device recognizes the spoken
+    /// language and some engine translates it into the target.
+    public func canCaption(_ pair: LanguagePair) -> Bool {
+        recognizable.contains(pair.spoken) && !engines(for: pair).isEmpty
+    }
+
     /// The engine to translate `pair` with: the preferred one if it can, else
     /// the one that can. When neither can, the preference stands.
     public func engine(preferring preferred: TranslationEngine, for pair: LanguagePair) -> TranslationEngine {
@@ -75,7 +81,7 @@ public struct LanguageSupport: Equatable, Sendable {
     /// cannot do at all gives way too, and a device that reports nothing leaves
     /// the pair as it is.
     public func settled(_ pair: LanguagePair, keeping side: Side) -> LanguagePair {
-        guard engines(for: pair).isEmpty else { return pair }
+        guard !canCaption(pair) else { return pair }
         let withSpoken = targets(for: pair.spoken).first.map { LanguagePair(spoken: pair.spoken, target: $0) }
         let withTarget = spoken(for: pair.target).first.map { LanguagePair(spoken: $0, target: pair.target) }
         let any = spokenChoices.first.flatMap { spoken in

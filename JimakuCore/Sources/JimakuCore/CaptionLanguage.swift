@@ -23,6 +23,19 @@ public struct CaptionLanguage: Hashable, Sendable, Identifiable {
 
     public var canBeSpoken: Bool { recognizerLocale != nil }
 
+    /// The language as it is listened for: itself, or for one that is only
+    /// written, the form of its family that can be spoken.
+    public var spokenForm: CaptionLanguage? {
+        canBeSpoken ? self : Self.all.first { $0.family == family && $0.canBeSpoken }
+    }
+
+    /// What the recognizer reported in this language, made fit to show. The
+    /// recognizer writes Chinese with a space before each comma and full stop;
+    /// other languages are passed on as they come.
+    public func tidying(_ recognized: String) -> String {
+        family == "zh" ? CaptionText.closingUpMarks(recognized) : recognized
+    }
+
     /// The language without its script. Two languages of one family are two
     /// written forms of the same language, and are not translated into each
     /// other.
@@ -105,16 +118,21 @@ public struct LanguagePair: Hashable, Sendable {
     public var isTranslatable: Bool { spoken.family != target.family }
 
     /// The pair with another target. Choosing the spoken language as the target
-    /// swaps the two, so the pair stays one that can be translated.
+    /// swaps the two, so the pair stays one that can be translated. A target
+    /// that is only written swaps in as the spoken form of its family.
     public func choosing(target new: CaptionLanguage) -> LanguagePair {
         var pair = LanguagePair(spoken: spoken, target: new)
-        if !pair.isTranslatable { pair.spoken = Self.spokenLanguage(insteadOf: target, awayFrom: new) }
+        if !pair.isTranslatable {
+            pair.spoken = Self.spokenLanguage(insteadOf: target.spokenForm ?? target, awayFrom: new)
+        }
         return pair
     }
 
     /// The pair with another spoken language. Choosing the target as the spoken
-    /// language swaps the two.
+    /// language swaps the two. A language that is only written is taken in the
+    /// spoken form of its family; one with no such form changes nothing.
     public func choosing(spoken new: CaptionLanguage) -> LanguagePair {
+        guard let new = new.spokenForm else { return self }
         var pair = LanguagePair(spoken: new, target: target)
         if !pair.isTranslatable {
             pair.target =

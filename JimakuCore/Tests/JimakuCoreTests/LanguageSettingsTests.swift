@@ -132,10 +132,12 @@ struct LanguageSettingsTests {
         var downloaded = device
         downloaded.packs[toChinese(.korean)] = .installed
 
-        #expect(settings.take(downloaded, asked: second))
+        let taken1 = settings.take(downloaded, asked: second)
+        #expect(taken1)
         #expect(!settings.needsLanguagePack)
         // The first question was asked before the download and answers late.
-        #expect(!settings.take(device, asked: first))
+        let taken2 = settings.take(device, asked: first)
+        #expect(!taken2)
         #expect(!settings.needsLanguagePack)
         #expect(settings.support == downloaded)
     }
@@ -145,11 +147,13 @@ struct LanguageSettingsTests {
         var settings = settings(toChinese(.korean))
         let first = settings.beginAsking()
         let second = settings.beginAsking()
-        #expect(settings.take(device, asked: first))
+        let taken3 = settings.take(device, asked: first)
+        #expect(taken3)
         #expect(settings.needsLanguagePack)
         var downloaded = device
         downloaded.packs[toChinese(.korean)] = .installed
-        #expect(settings.take(downloaded, asked: second))
+        let taken4 = settings.take(downloaded, asked: second)
+        #expect(taken4)
         #expect(!settings.needsLanguagePack)
     }
 
