@@ -18,6 +18,38 @@ struct StartView: View {
                     .aspectRatio(controller.frameSize, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+                    .listRowSeparator(.hidden)
+
+                if guide == .openRecording {
+                    // Drawn as a button and not one: the system's control lies
+                    // over all of it and takes the tap.
+                    Button {} label: {
+                        Text("打开录屏")
+                            .font(.title3.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .overlay {
+                        BroadcastPicker(
+                            sheetIsOwed: controller.broadcastSheetIsOwed,
+                            takeSheetRequest: { controller.takeBroadcastSheetRequest() },
+                            pressed: { controller.dropBroadcastSheetRequest() }
+                        )
+                        .accessibilityIdentifier("broadcastPicker")
+                    }
+                    .listRowSeparator(.hidden)
+                }
+
+                if let guide {
+                    Text(text(for: guide))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("recordingGuide")
+                        .listRowSeparator(.hidden)
+                }
 
                 Button {
                     controller.performPrimaryAction()
@@ -27,24 +59,13 @@ struct StartView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
-                .buttonStyle(.borderedProminent)
+                // While the recording is the thing to open, Stop steps back:
+                // from the tap on Start, so it does not change when the wide
+                // button arrives.
+                .prominent(!(isRunning && controller.audioStatus == .notBroadcasting))
                 .disabled(!controller.session.canPerformPrimaryAction)
                 .accessibilityIdentifier("primaryAction")
-
-                if isRunning, let hint = audioHint {
-                    HStack(spacing: 12) {
-                        Text(hint)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("audioHint")
-                        Spacer(minLength: 0)
-                        if controller.audioStatus == .notBroadcasting {
-                            BroadcastPicker()
-                                .frame(width: 44, height: 44)
-                                .accessibilityIdentifier("broadcastPicker")
-                        }
-                    }
-                }
+                .listRowSeparator(.hidden)
 
                 if let notice = controller.notice {
                     Text(notice)
@@ -107,17 +128,29 @@ struct StartView: View {
         .onAppear { controller.prepare() }
         .onChange(of: scenePhase) { _, phase in
             // A language pack may have been downloaded in the system's settings.
-            if phase == .active { controller.refreshLanguageSupport() }
+            if phase == .active {
+                controller.refreshLanguageSupport()
+            } else {
+                // A sheet the app owed is not shown to a user who has left.
+                controller.dropBroadcastSheetRequest()
+            }
         }
     }
 
-    /// What the user should know about the audio. Nil when audio is arriving.
-    private var audioHint: String? {
-        switch controller.audioStatus {
-        case .unavailable: "读不到共享的音频缓冲，收不到别的 app 的声音。"
-        case .notBroadcasting: "还没开始录屏。点右边的圆钮，选 Jimaku，开始直播。"
-        case .stalled: "录屏已开始，暂时没有声音。"
-        case .receiving: nil
+    /// What the page says about the screen recording. Nil until the caption
+    /// window is up and while sound arrives.
+    private var guide: RecordingGuide? {
+        RecordingGuide.choose(windowIsUp: controller.session.state == .running, audio: controller.audioStatus)
+    }
+
+    private func text(for guide: RecordingGuide) -> String {
+        switch guide {
+        // The system's sheet calls the recording a broadcast, so the button to
+        // tap there is named as the sheet names it. Written to be true whether
+        // the sheet is up or was closed.
+        case .openRecording: "Jimaku 要靠录屏才能听到视频里的声音，画面不会保存。系统会让你点一次「开始直播」。"
+        case .playSomething: "录屏已打开，现在没有声音。可以去播放视频了。"
+        case .cannotHear: "Jimaku 收不到别的 app 的声音。"
         }
     }
 
@@ -125,6 +158,18 @@ struct StartView: View {
         switch controller.session.primaryAction {
         case .start: "开始"
         case .stop: "停止"
+        }
+    }
+}
+
+extension View {
+    /// The filled button style, or the quieter bordered one.
+    @ViewBuilder
+    fileprivate func prominent(_ isProminent: Bool) -> some View {
+        if isProminent {
+            buttonStyle(.borderedProminent)
+        } else {
+            buttonStyle(.bordered)
         }
     }
 }

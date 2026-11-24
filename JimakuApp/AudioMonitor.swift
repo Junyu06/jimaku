@@ -43,8 +43,24 @@ final class AudioMonitor {
     #if targetEnvironment(simulator)
         /// The simulator has no screen broadcast, so this writes a tone that pulses on
         /// and off into the ring, standing in for the extension. Simulator only.
+        ///
+        /// The launch argument `-simulatedRecording off` leaves the recording
+        /// off, and `-simulatedRecording silent` runs one that carries no
+        /// sound, so the page can be looked at in those two states.
         func writeSimulatedAudio(elapsed: Double, duration: Double) {
             guard let ring else { return }
+            switch UserDefaults.standard.string(forKey: "simulatedRecording") {
+            case "off":
+                // A run that was killed can leave the flag set.
+                ring.isBroadcasting = false
+                return
+            case "silent":
+                ring.isBroadcasting = true
+                ring.heartbeat()
+                return
+            default:
+                break
+            }
             ring.isBroadcasting = true
             let count = Int(duration * Double(AudioRing.sampleRate))
             let loud = Int(elapsed) % 2 == 0

@@ -26,7 +26,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
         // Only the app decides whether audio is wanted. Without a caption session
         // there is nobody to listen, so do not keep the screen broadcast running.
         guard ring.isCaptureWanted else {
-            finishBroadcastWithError(Self.error("请先在 Jimaku 里点「开始」，再开始录屏。"))
+            finishBroadcastWithError(Self.error("请先在 Jimaku 里点「开始」，再打开录屏。"))
             return
         }
         ring.heartbeat()
