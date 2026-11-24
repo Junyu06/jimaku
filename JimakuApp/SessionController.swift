@@ -728,7 +728,7 @@ final class SessionController {
         case .recognitionFailed: "语音识别没有启动"
         case .preparingRecognition: "正在准备语音识别…"
         case .audioUnavailable: "收不到声音"
-        case .waitingForBroadcast: "在 Jimaku 里打开录屏"
+        case .waitingForBroadcast: "录屏未打开"
         case .noSound: "暂时没有声音"
         case .listening: "正在听…"
         case .preparingTranslation: "正在准备翻译…"

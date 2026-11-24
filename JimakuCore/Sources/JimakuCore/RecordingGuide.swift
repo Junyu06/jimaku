@@ -9,7 +9,7 @@ public enum RecordingGuide: Equatable, Sendable {
     /// system's sheet.
     case openRecording
     /// A broadcast is running and no sound has arrived for a moment.
-    case playSomething
+    case noSound
     /// The app cannot receive audio at all, so a broadcast would not help.
     case cannotHear
 
@@ -20,7 +20,7 @@ public enum RecordingGuide: Equatable, Sendable {
         guard windowIsUp else { return nil }
         switch audio {
         case .notBroadcasting: return .openRecording
-        case .stalled: return .playSomething
+        case .stalled: return .noSound
         case .unavailable: return .cannotHear
         case .receiving: return nil
         }

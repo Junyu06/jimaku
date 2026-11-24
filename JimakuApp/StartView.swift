@@ -45,8 +45,9 @@ struct StartView: View {
 
                 if let guide {
                     Text(text(for: guide))
-                        .font(.callout)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
                         .accessibilityIdentifier("recordingGuide")
                         .listRowSeparator(.hidden)
                 }
@@ -143,14 +144,12 @@ struct StartView: View {
         RecordingGuide.choose(windowIsUp: controller.session.state == .running, audio: controller.audioStatus)
     }
 
+    /// A label, not a sentence: short enough to be read at a glance.
     private func text(for guide: RecordingGuide) -> String {
         switch guide {
-        // The system's sheet calls the recording a broadcast, so the button to
-        // tap there is named as the sheet names it. Written to be true whether
-        // the sheet is up or was closed.
-        case .openRecording: "Jimaku 要靠录屏才能听到视频里的声音，画面不会保存。系统会让你点一次「开始直播」。"
-        case .playSomething: "录屏已打开，现在没有声音。可以去播放视频了。"
-        case .cannotHear: "Jimaku 收不到别的 app 的声音。"
+        case .openRecording: "只用声音，不保存画面"
+        case .noSound: "录屏已打开，暂无声音"
+        case .cannotHear: "收不到其他 App 的声音"
         }
     }
 

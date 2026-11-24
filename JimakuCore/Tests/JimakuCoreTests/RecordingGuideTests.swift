@@ -17,9 +17,9 @@ struct RecordingGuideTests {
         #expect(RecordingGuide.choose(windowIsUp: true, audio: .notBroadcasting) == .openRecording)
     }
 
-    @Test("With the window up and a broadcast that carries no sound the guide is to play something")
+    @Test("With the window up and a broadcast that carries no sound the guide is that there is no sound")
     func noSound() {
-        #expect(RecordingGuide.choose(windowIsUp: true, audio: .stalled) == .playSomething)
+        #expect(RecordingGuide.choose(windowIsUp: true, audio: .stalled) == .noSound)
     }
 
     @Test("With the window up and sound arriving the guide is nil")
