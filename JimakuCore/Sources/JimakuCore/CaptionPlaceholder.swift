@@ -46,6 +46,9 @@ public enum CaptionPlaceholder: Equatable, Sendable {
         case .ready: break
         }
 
+        // With no broadcast nothing more can come, whatever else is waiting.
+        if audio == .notBroadcasting { return .waitingForBroadcast }
+
         // Speech exists but there is no caption: the only way that happens is
         // translation-only mode waiting for a translation.
         if hasSpeech, mode == .translationOnly {
@@ -62,6 +65,22 @@ public enum CaptionPlaceholder: Equatable, Sendable {
         case .stalled: return .noSound
         case .receiving: return .listening
         }
+    }
+}
+
+extension CaptionPlaceholder {
+    /// What the window says in place of captions it already shows. Nil leaves
+    /// the captions up.
+    ///
+    /// Captions stay through a silence, which is part of any video. With no
+    /// broadcast at all nothing more can come, and captions left on screen
+    /// would look like speech that simply stopped: the window says that the
+    /// recording is off. The captions are back when a broadcast runs again.
+    ///
+    /// Not when recognition has failed: opening the recording would bring no
+    /// more captions then, and the page says what went wrong.
+    public static func replacingCaptions(recognition: Readiness, audio: AudioAvailability) -> CaptionPlaceholder? {
+        recognition != .failed && audio == .notBroadcasting ? .waitingForBroadcast : nil
     }
 }
 

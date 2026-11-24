@@ -679,7 +679,8 @@ final class SessionController {
     }
 
     /// Shows the current captions, or one line saying what the session is waiting
-    /// for when there are none yet. Outside a session, shows a sample caption.
+    /// for when there are none yet or no broadcast runs. Outside a session, shows
+    /// a sample caption.
     private func refreshWindow() {
         let layout = layout
         let frameHeight = CaptionFrame.height(for: layout)
@@ -709,6 +710,8 @@ final class SessionController {
                 hasSpeech: !transcript.entries.isEmpty || !transcript.pending.isEmpty
             )
             window.show(.notice(text(for: placeholder)), frameHeight: frameHeight)
+        } else if let notice = CaptionPlaceholder.replacingCaptions(recognition: recognition, audio: audioStatus) {
+            window.show(.notice(text(for: notice)), frameHeight: frameHeight)
         } else {
             window.show(.rows(board.rows), frameHeight: frameHeight)
         }

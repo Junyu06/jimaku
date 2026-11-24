@@ -47,6 +47,42 @@ struct CaptionPlaceholderTests {
         )
     }
 
+    @Test("With no broadcast, the window says so in place of captions it already shows")
+    func noBroadcastReplacesCaptions() {
+        #expect(CaptionPlaceholder.replacingCaptions(recognition: .ready, audio: .notBroadcasting) == .waitingForBroadcast)
+    }
+
+    @Test("While a broadcast runs, with or without sound, captions already shown stay up")
+    func captionsStayDuringBroadcast() {
+        #expect(CaptionPlaceholder.replacingCaptions(recognition: .ready, audio: .receiving) == nil)
+        #expect(CaptionPlaceholder.replacingCaptions(recognition: .ready, audio: .stalled) == nil)
+    }
+
+    @Test("Without the shared audio, captions already shown stay up")
+    func captionsStayWithoutSharedAudio() {
+        #expect(CaptionPlaceholder.replacingCaptions(recognition: .ready, audio: .unavailable) == nil)
+    }
+
+    @Test("When recognition has failed, captions already shown stay up with no broadcast: opening the recording would not bring more")
+    func captionsStayWhenRecognitionFailed() {
+        #expect(CaptionPlaceholder.replacingCaptions(recognition: .failed, audio: .notBroadcasting) == nil)
+    }
+
+    @Test("With no broadcast, a window waiting for a translation says the recording is off, not that it is translating")
+    func noBroadcastBeforeTranslationWaiting() {
+        for translation in [CaptionPlaceholder.Readiness.preparing, .ready, .failed] {
+            #expect(
+                placeholder(audio: .notBroadcasting, translation: translation, mode: .translationOnly, hasSpeech: true)
+                    == .waitingForBroadcast)
+        }
+    }
+
+    @Test("While a broadcast runs, a window waiting for a translation still says so")
+    func translationWaitingDuringBroadcast() {
+        #expect(placeholder(audio: .stalled, mode: .translationOnly, hasSpeech: true) == .translating)
+        #expect(placeholder(audio: .receiving, translation: .preparing, mode: .translationOnly, hasSpeech: true) == .preparingTranslation)
+    }
+
     @Test("A recognition failure is reported before anything else")
     func recognitionFailureFirst() {
         #expect(placeholder(recognition: .failed, audio: .notBroadcasting, translation: .failed) == .recognitionFailed)

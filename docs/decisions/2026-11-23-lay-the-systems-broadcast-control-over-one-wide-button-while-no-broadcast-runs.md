@@ -1,5 +1,5 @@
 date: 2026-11-23
-status: accepted
+status: superseded in part by 2026-11-24-say-that-the-recording-is-off-in-place-of-captions-already-shown-while-no-broadcast-runs.md: when the caption window says the recording is off. The rest stands.
 supersedes: none
 
 # Lay the system's broadcast control over one wide button while no broadcast runs
