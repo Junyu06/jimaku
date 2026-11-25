@@ -100,7 +100,7 @@ struct BroadcastPicker: UIViewRepresentable {
             guard let found = picker.subviews.lazy.compactMap({ $0 as? UIButton }).first else { return false }
             // The page's own button is hidden from assistive technology; the
             // one that acts carries its name.
-            found.accessibilityLabel = "打开录屏"
+            found.accessibilityLabel = String(localized: "打开录屏")
             // A press by the user settles what the app owed as well.
             found.addTarget(self, action: #selector(buttonPressed), for: .touchUpInside)
             button = found

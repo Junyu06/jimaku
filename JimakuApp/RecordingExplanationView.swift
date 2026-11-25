@@ -5,7 +5,7 @@ import SwiftUI
 /// that closes it.
 struct RecordingExplanationView: View {
     /// The button's title: the page stands before a session, or was asked for.
-    let buttonTitle: String
+    let buttonTitle: LocalizedStringKey
     let close: () -> Void
 
     var body: some View {
@@ -58,7 +58,7 @@ struct RecordingExplanationView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func row(symbol: String, title: String, detail: String) -> some View {
+    private func row(symbol: String, title: LocalizedStringKey, detail: LocalizedStringKey) -> some View {
         HStack(alignment: .top, spacing: 16) {
             Image(systemName: symbol)
                 .font(.title)

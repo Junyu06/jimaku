@@ -40,6 +40,9 @@ targets:
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
         NSSpeechRecognitionUsageDescription: Jimaku 把正在播放的声音转成文字，用来显示字幕。
+        # Shows the language row for the app in the system's Settings even on
+        # a device with one preferred language.
+        UIPrefersShowingLanguageSettings: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
