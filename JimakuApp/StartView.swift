@@ -13,6 +13,8 @@ struct StartView: View {
     @State private var explanation: ExplanationUse?
     /// Set when that page was closed with its button before a first session.
     @State private var startsAfterExplanation = false
+    /// The captions of earlier sessions are on the screen.
+    @State private var showsSaved = false
 
     private var isRunning: Bool { controller.session.isActive }
 
@@ -137,6 +139,11 @@ struct StartView: View {
                 }
             }
 
+            Section {
+                Button("字幕记录") { showsSaved = true }
+                    .accessibilityIdentifier("savedCaptionsRow")
+            }
+
             // Always there: the line under the wide button shows only while
             // the recording is off, and the page comes by itself only once.
             Section("帮助") {
@@ -161,6 +168,9 @@ struct StartView: View {
             }
         }
         .onAppear { controller.prepare() }
+        .sheet(isPresented: $showsSaved) {
+            SavedCaptionsView(controller: controller)
+        }
         .sheet(item: $explanation, onDismiss: startIfExplained) { use in
             RecordingExplanationView(buttonTitle: use == .beforeStart ? "继续" : "确认") {
                 controller.explanationWasRead()
@@ -180,6 +190,9 @@ struct StartView: View {
                 controller.dropBroadcastSheetRequest()
                 // Nor is a session started for them.
                 startsAfterExplanation = false
+                // What was said so far is on the device before the app can
+                // be closed from the switcher.
+                controller.saveSession()
             }
         }
     }
