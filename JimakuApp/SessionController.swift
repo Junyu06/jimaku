@@ -32,7 +32,9 @@ final class SessionController {
     /// A message for the user when something went wrong. Nil when all is well.
     var notice: String? {
         windowNotice ?? cannotStartNotice ?? recognitionNotice ?? packFailure
-            ?? translationNotice.map { $0 + engineHint }
+            ?? translationNotice.map { message in
+                engineHint.isEmpty ? message : String(localized: "\(message)\(engineHint)")
+            }
     }
 
     /// Why the language pack of the pair in use did not arrive. It matters only
@@ -208,6 +210,14 @@ final class SessionController {
             languagePackSource = LanguagePackSource()
             supportSource = SystemLanguageSupport()
         #endif
+        // The pair worked out from the device's languages is kept from the
+        // first launch on. Worked out again at each launch it would change
+        // when the user chooses a language for this app alone: that language
+        // then stands first in the list the app is handed.
+        if defaults.string(forKey: Self.targetKey).flatMap(CaptionLanguage.init(identifier:)) == nil {
+            defaults.set(settings.chosen.spoken.identifier, forKey: Self.spokenKey)
+            defaults.set(settings.chosen.target.identifier, forKey: Self.targetKey)
+        }
     }
 
     func prepare() {

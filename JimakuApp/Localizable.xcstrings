@@ -1,6 +1,22 @@
 {
   "sourceLanguage" : "zh-Hans",
   "strings" : {
+    "%@%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@%@"
+          }
+        }
+      }
+    },
     "%@翻译成%@的语言包没下载成：%@" : {
       "localizations" : {
         "en" : {
@@ -296,7 +312,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : " You can switch Translation Engine to Language Pack."
+            "value" : "You can switch Translation Engine to Language Pack."
           }
         },
         "zh-Hans" : {
