@@ -5,7 +5,7 @@ status: not-run
 
 # Tapping Start brings up the system's broadcast sheet without another tap
 
-- Input: on a device with no screen broadcast running, open the app and tap 开始 (Start) once. Touch nothing else.
+- Input: on a device with no screen broadcast running, and where the page that says why the recording is needed has been closed with its button before, open the app and tap 开始 (Start) once. Touch nothing else.
 - Expected result: the caption window appears, and then the system's screen-broadcast sheet comes up, once, with Jimaku as its extension.
 - Property: the app can press the system's broadcast control in code once the caption window is up.
 

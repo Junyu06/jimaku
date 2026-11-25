@@ -5,7 +5,7 @@ status: simulated
 
 # With captions already shown and no broadcast, the caption window says the recording is off
 
-- Input: in an iPad simulator, which has Picture in Picture, launch the app with the argument `-simulatedRecording off`, tap 开始 (Start), and wait six seconds. The simulator's recognizer is scripted and produces captions without any audio.
+- Input: in an iPad simulator, which has Picture in Picture, launch the app with the argument `-simulatedRecording off -recordingExplanationRead YES`, tap 开始 (Start), and wait six seconds. The simulator's recognizer is scripted and produces captions without any audio.
 - Expected result: the session's log on the page lists captions with their translations, and the caption window shows none of them: it reads 录屏未打开.
 - Property: with no broadcast running, the window says so even when it has captions to show.
 
