@@ -24,6 +24,6 @@ Rejected: a longer label under the button. The owner had already said that sente
 
 Rejected: a title on the line with the question mark that repeats the question (为什么要打开录屏) in place of the reason. The reason in a few words can be read without a tap.
 
-Not decided here: an entry to the page from anywhere else. While a recording runs the page has no line that opens it. When the page comes by itself is in `docs/decisions/2026-11-25-show-the-page-that-says-why-the-recording-is-needed-once-before-the-first-session.md`.
+Not decided here: an entry to the page from anywhere else; see `docs/decisions/2026-11-25-keep-a-help-row-on-the-start-page-that-opens-the-page-saying-why-the-recording-is-needed.md`. When the page comes by itself is in `docs/decisions/2026-11-25-show-the-page-that-says-why-the-recording-is-needed-once-before-the-first-session.md`.
 
 Status of evidence: the line and the page were looked at in an iPad simulator; see `docs/cases/audio-004-a-session-with-no-broadcast-shows-the-wide-button-and-under-it-what-the-recording-is-for.md` and `docs/cases/audio-010-the-question-mark-under-the-wide-button-brings-up-the-page-that-says-why-the-recording-is-needed.md`. Nothing of this has run on a device, and the page has not been looked at on an iPhone, where a sheet takes the whole height. The name 屏幕直播 for the system's sheet is written from memory of the system in Simplified Chinese and has not been read off a device. VoiceOver on the line has not been tried.

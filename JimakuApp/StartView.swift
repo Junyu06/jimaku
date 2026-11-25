@@ -137,6 +137,13 @@ struct StartView: View {
                 }
             }
 
+            // Always there: the line under the wide button shows only while
+            // the recording is off, and the page comes by itself only once.
+            Section("帮助") {
+                Button("为什么要打开录屏") { explanation = .asked }
+                    .accessibilityIdentifier("recordingHelp")
+            }
+
             if !controller.transcript.entries.isEmpty {
                 Section("这一次的字幕") {
                     ForEach(controller.transcript.entries) { entry in
