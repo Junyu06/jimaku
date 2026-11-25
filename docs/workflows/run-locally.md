@@ -34,6 +34,8 @@ In the simulator a stand-in writes a tone into the shared audio ring in place of
 xcrun simctl launch booted <bundle identifier> -simulatedRecording off
 ```
 
+To see the interface in English or in Chinese whatever the simulator's language, launch with `-AppleLanguages "(en)"` or `-AppleLanguages "(zh-Hans)"`.
+
 The first tap on Start shows a page that says why the recording is needed, once for each installed app. To see it again, or to skip it, launch with `-recordingExplanationRead NO` or `-recordingExplanationRead YES`.
 
 Screen broadcast, Picture in Picture, and background execution are not verified in the simulator. See `docs/conventions/write-the-failing-test-before-the-code.md`.

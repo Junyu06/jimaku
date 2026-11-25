@@ -145,7 +145,7 @@ struct StartView: View {
             }
 
             if !controller.transcript.entries.isEmpty {
-                Section("这一次的字幕") {
+                Section("本次字幕") {
                     ForEach(controller.transcript.entries) { entry in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(entry.original)
@@ -192,7 +192,7 @@ struct StartView: View {
 
     /// A label, not a sentence: short enough to be read at a glance. Where the
     /// recording is offered the row is a button and has its own words.
-    private func text(for guide: RecordingGuide) -> String {
+    private func text(for guide: RecordingGuide) -> LocalizedStringKey {
         switch guide {
         case .openRecording: ""
         case .noSound: "录屏已打开，暂无声音"
@@ -215,7 +215,7 @@ struct StartView: View {
         controller.performPrimaryAction()
     }
 
-    private var primaryActionTitle: String {
+    private var primaryActionTitle: LocalizedStringKey {
         switch controller.session.primaryAction {
         case .start: "开始"
         case .stop: "停止"
@@ -284,7 +284,7 @@ private struct LanguageRows: View {
     @State private var requestedPair: LanguagePair?
 
     var body: some View {
-        Picker("说话的语言", selection: spoken) {
+        Picker("源语言", selection: spoken) {
             ForEach(controller.settings.spokenChoices) { language in
                 Text(language.spokenName).tag(language)
             }
@@ -311,7 +311,7 @@ private struct LanguageRows: View {
             if let pair { controller.languagePackRequestEnded(for: pair, error: failure) }
         }
 
-        Picker("翻译成", selection: target) {
+        Picker("目标语言", selection: target) {
             ForEach(controller.settings.targetChoices) { language in
                 Text(language.writtenName).tag(language)
             }
@@ -328,7 +328,7 @@ private struct LanguageRows: View {
             Picker("翻译引擎", selection: engine) {
                 ForEach(TranslationEngine.allCases, id: \.self) { engine in
                     let obstacle = controller.settings.obstacle(to: engine)
-                    Text(obstacle.map { "\(name(of: engine))（\(reason(for: $0))）" } ?? name(of: engine))
+                    Text(obstacle.map { String(localized: "\(name(of: engine))（\(reason(for: $0))）") } ?? name(of: engine))
                         .tag(engine)
                         .selectionDisabled(obstacle != nil)
                 }
@@ -347,7 +347,7 @@ private struct LanguageRows: View {
         }
 
         if controller.settings.needsLanguagePack {
-            LabeledContent("语言包还没下载") {
+            LabeledContent("语言包未下载") {
                 Button("下载") { requestLanguagePack() }
                     .disabled(packRequest != nil)
                     .accessibilityIdentifier("downloadLanguagePack")
@@ -369,7 +369,7 @@ private struct LanguageRows: View {
 
     private func name(of engine: TranslationEngine) -> String {
         switch engine {
-        case .languagePack: "语言包"
+        case .languagePack: String(localized: "语言包")
         case .appleIntelligence: "Apple Intelligence"
         }
     }
@@ -377,12 +377,12 @@ private struct LanguageRows: View {
     /// Why an engine cannot be chosen, short enough to sit after its name.
     private func reason(for obstacle: EngineObstacle) -> String {
         switch obstacle {
-        case .deviceCannotRunModel: "这台设备不支持"
+        case .deviceCannotRunModel: String(localized: "这台设备不支持")
         case .modelLacksLanguage(let language):
-            "不支持\(language == controller.languages.spoken ? language.spokenName : language.writtenName)"
-        case .noLanguagePack: "没有这两种语言的语言包"
-        case .sameLanguage: "两边是同一种语言"
-        case .notReported: "系统没有给出结果"
+            String(localized: "不支持\(language == controller.languages.spoken ? language.spokenName : language.writtenName)")
+        case .noLanguagePack: String(localized: "无对应语言包")
+        case .sameLanguage: String(localized: "源语言与目标语言相同")
+        case .notReported: String(localized: "状态未知")
         }
     }
 

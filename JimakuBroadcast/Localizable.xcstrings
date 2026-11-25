@@ -1,0 +1,54 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "字幕已停止。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Captions stopped."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "字幕已停止。"
+          }
+        }
+      }
+    },
+    "收不到其他 App 的声音。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Can't get audio from other apps."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收不到其他 App 的声音。"
+          }
+        }
+      }
+    },
+    "请先在 Jimaku 里点「开始」。" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tap Start in Jimaku first."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请先在 Jimaku 里点「开始」。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

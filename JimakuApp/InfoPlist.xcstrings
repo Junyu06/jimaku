@@ -1,0 +1,23 @@
+{
+  "sourceLanguage" : "zh-Hans",
+  "strings" : {
+    "NSSpeechRecognitionUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jimaku turns playing audio into text to show captions."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jimaku 把正在播放的声音转成文字，用来显示字幕。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

@@ -5,7 +5,7 @@ status: not-run
 
 # Speech in Chinese is captioned in English
 
-- Input: on a device, choose 说话的语言 (spoken language) 中文 and 翻译成 (translate into) 英语, set 显示 (display) to 原文和译文 (original and translation), start a session, and play a video with Mandarin speech in a video app for two to three minutes.
+- Input: on a device, choose 源语言 (source language) 中文 and 目标语言 (target language) 英语, set 显示 (display) to 原文和译文 (original and translation), start a session, and play a video with Mandarin speech in a video app for two to three minutes.
 - Expected result: the floating window shows the Chinese line on top, without a space before its commas, and an English line below it that a reader can follow.
 - Property: a pair of languages other than the first two goes through the same recognition, cutting, and translation as English and Japanese into Chinese.
 

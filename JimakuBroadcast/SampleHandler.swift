@@ -20,13 +20,13 @@ final class SampleHandler: RPBroadcastSampleHandler {
 
     override func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
         guard let url = SharedAudio.ringURL(), let ring = try? AudioRing(url: url) else {
-            finishBroadcastWithError(Self.error("收不到其他 App 的声音。"))
+            finishBroadcastWithError(Self.error(String(localized: "收不到其他 App 的声音。")))
             return
         }
         // Only the app decides whether audio is wanted. Without a caption session
         // there is nobody to listen, so do not keep the screen broadcast running.
         guard ring.isCaptureWanted else {
-            finishBroadcastWithError(Self.error("请先在 Jimaku 里点「开始」。"))
+            finishBroadcastWithError(Self.error(String(localized: "请先在 Jimaku 里点「开始」。")))
             return
         }
         ring.heartbeat()
@@ -47,7 +47,7 @@ final class SampleHandler: RPBroadcastSampleHandler {
         guard ring.isCaptureWanted else {
             ring.isBroadcasting = false
             self.ring = nil
-            finishBroadcastWithError(Self.error("字幕已停止。"))
+            finishBroadcastWithError(Self.error(String(localized: "字幕已停止。")))
             return
         }
 

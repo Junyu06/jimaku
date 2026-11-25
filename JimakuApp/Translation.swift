@@ -25,9 +25,9 @@ enum TranslationSetupError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .languagePackMissing(let languages):
-            "\(languages.spoken.spokenName)翻译成\(languages.target.writtenName)的语言包还没下载。回到 Jimaku，在设置里点「下载」。"
+            String(localized: "\(languages.spoken.spokenName)到\(languages.target.writtenName)的语言包未下载。请回到 Jimaku，在设置里点「下载」。")
         case .languagePairNotSupported(let languages):
-            "系统的语言包不能把\(languages.spoken.spokenName)翻译成\(languages.target.writtenName)。"
+            String(localized: "系统的语言包不能把\(languages.spoken.spokenName)翻译成\(languages.target.writtenName)。")
         }
     }
 }
@@ -88,7 +88,7 @@ private final class LanguagePackTranslator: PreparedTranslator {
 
         func translate(_ text: String) async throws -> String {
             try? await Task.sleep(for: .milliseconds(150))
-            return DemoCaptions.translation(of: text, in: speech) ?? "（演示翻译）"
+            return DemoCaptions.translation(of: text, in: speech) ?? String(localized: "（演示翻译）")
         }
     }
 #endif

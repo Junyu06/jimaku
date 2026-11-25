@@ -39,9 +39,9 @@ enum SpeechRecognitionError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unavailable: "这台设备上系统语音识别不可用。"
-        case .languageNotSupported: "系统语音识别不支持这种语言。"
-        case .noAudioFormat: "系统语音识别没有给出可用的音频格式。"
+        case .unavailable: String(localized: "这台设备上系统语音识别不可用。")
+        case .languageNotSupported: String(localized: "系统语音识别不支持这种语言。")
+        case .noAudioFormat: String(localized: "系统语音识别没有给出可用的音频格式。")
         }
     }
 }

@@ -5,7 +5,7 @@ status: not-run
 
 # Captions are translated into Chinese
 
-- Input: on an iPhone and an iPad with the English, Japanese, and Simplified Chinese translation languages downloaded, 翻译成 (translate into) set to 简体中文 and 翻译引擎 (translation engine), where it is shown, to 语言包 (language packs): with 说话的语言 (spoken language) on 英语, start a session and watch an English video in a video app and one video in a social feed app, two to three minutes each. Stop, choose 日语, start again, and watch a Japanese video.
+- Input: on an iPhone and an iPad with the English, Japanese, and Simplified Chinese translation languages downloaded, 目标语言 (target language) set to 简体中文 and 翻译引擎 (translation engine), where it is shown, to 语言包 (language packs): with 源语言 (source language) on 英语, start a session and watch an English video in a video app and one video in a social feed app, two to three minutes each. Stop, choose 日语, start again, and watch a Japanese video.
 - Expected result: the floating window shows the original line on top and a Simplified Chinese line below. The Chinese for a sentence appears soon after the sentence ends, stays while the next is spoken, and can be followed by a reader. What happens without the language pack is in language-006.
 - Property: kept speech is translated on the device by the Translation framework while the app is in the background. These steps do not show which of the framework's strategies did the translating; see `docs/pitfalls/the-translation-framework-answers-by-a-default-strategy-that-changed-with-the-sdk.md`.
 

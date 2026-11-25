@@ -13,12 +13,12 @@ enum AppleIntelligenceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .deviceNotEligible: "这台设备不支持 Apple Intelligence。"
-        case .notEnabled: "系统设置里还没打开 Apple Intelligence。"
-        case .modelNotReady: "Apple Intelligence 的模型还在下载或准备中。"
-        case .unavailable: "Apple Intelligence 现在用不了。"
-        case .languageNotSupported(let language): "Apple Intelligence 不支持\(language.writtenName)。"
-        case .refused: "Apple Intelligence 没有翻译这一句。"
+        case .deviceNotEligible: String(localized: "这台设备不支持 Apple Intelligence。")
+        case .notEnabled: String(localized: "系统设置里还没打开 Apple Intelligence。")
+        case .modelNotReady: String(localized: "Apple Intelligence 的模型还在下载或准备中。")
+        case .unavailable: String(localized: "Apple Intelligence 暂时不可用。")
+        case .languageNotSupported(let language): String(localized: "Apple Intelligence 不支持\(language.writtenName)。")
+        case .refused: String(localized: "Apple Intelligence 没有翻译这一句。")
         }
     }
 }

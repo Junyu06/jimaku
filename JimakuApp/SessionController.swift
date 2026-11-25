@@ -32,7 +32,9 @@ final class SessionController {
     /// A message for the user when something went wrong. Nil when all is well.
     var notice: String? {
         windowNotice ?? cannotStartNotice ?? recognitionNotice ?? packFailure
-            ?? translationNotice.map { $0 + engineHint }
+            ?? translationNotice.map { message in
+                engineHint.isEmpty ? message : String(localized: "\(message)\(engineHint)")
+            }
     }
 
     /// Why the language pack of the pair in use did not arrive. It matters only
@@ -46,13 +48,13 @@ final class SessionController {
     /// no pair.
     private var cannotStartNotice: String? {
         guard refusedStart, !settings.canStart else { return nil }
-        return "这台设备现在识别不了\(languages.spoken.spokenName)，或者没法把它翻译成\(languages.target.writtenName)，开始不了。"
+        return String(localized: "此设备暂不支持识别\(languages.spoken.spokenName)或将其翻译为\(languages.target.writtenName)，无法开始。")
     }
 
     /// Added to a message about the language model failing, while changing the
     /// engine would help: the language packs can translate these languages.
     private var engineHint: String {
-        modelFailed && settings.engineChoices.contains(.languagePack) ? "可以把「翻译引擎」换成语言包。" : ""
+        modelFailed && settings.engineChoices.contains(.languagePack) ? String(localized: "可以把「翻译引擎」换成语言包。") : ""
     }
 
     /// The languages and the engine: what the user chose, what the device can
@@ -208,6 +210,14 @@ final class SessionController {
             languagePackSource = LanguagePackSource()
             supportSource = SystemLanguageSupport()
         #endif
+        // The pair worked out from the device's languages is kept from the
+        // first launch on. Worked out again at each launch it would change
+        // when the user chooses a language for this app alone: that language
+        // then stands first in the list the app is handed.
+        if defaults.string(forKey: Self.targetKey).flatMap(CaptionLanguage.init(identifier:)) == nil {
+            defaults.set(settings.chosen.spoken.identifier, forKey: Self.spokenKey)
+            defaults.set(settings.chosen.target.identifier, forKey: Self.targetKey)
+        }
     }
 
     func prepare() {
@@ -276,7 +286,7 @@ final class SessionController {
     /// has a watch of its own.
     func languagePackRequestEnded(for pair: LanguagePair, error: (any Error)?) {
         packFailures[pair] = error.map {
-            "\(pair.spoken.spokenName)翻译成\(pair.target.writtenName)的语言包没下载成：\($0.localizedDescription)"
+            String(localized: "\(pair.spoken.spokenName)到\(pair.target.writtenName)的语言包下载失败：\($0.localizedDescription)")
         }
         packWatches[pair]?.cancel()
         packWatches[pair] = Task { [weak self] in
@@ -322,7 +332,7 @@ final class SessionController {
 
     func performPrimaryAction() {
         if session.primaryAction == .start, session.canPerformPrimaryAction, !window.isSupported {
-            windowNotice = "这台设备不支持画中画，悬浮窗开不了。"
+            windowNotice = String(localized: "这台设备不支持画中画，悬浮窗开不了。")
             return
         }
         if session.primaryAction == .start, session.canPerformPrimaryAction, !settings.canStart {
@@ -370,7 +380,7 @@ final class SessionController {
             controller.endSession()
             // Cut the old window off, so nothing it reports later reaches a new session.
             controller.window.abandon()
-            controller.windowNotice = "悬浮窗没能打开。请留在 Jimaku 里再点一次开始。"
+            controller.windowNotice = String(localized: "悬浮窗无法打开。请留在 Jimaku 里重试。")
         }
     }
 
@@ -425,7 +435,7 @@ final class SessionController {
         session.windowFailedToStart()
         guard wasActive else { return }
         endSession()
-        windowNotice = "悬浮窗没能打开：\(error.localizedDescription)"
+        windowNotice = String(localized: "悬浮窗无法打开：\(error.localizedDescription)")
     }
 
     private func windowDidClose() {
@@ -437,7 +447,7 @@ final class SessionController {
             // The window went away before it ever appeared, which happens when a
             // start follows a stop too closely. Say so instead of ending silently.
             endSession()
-            windowNotice = "悬浮窗没能打开，请再点一次开始。"
+            windowNotice = String(localized: "悬浮窗无法打开，请重试。")
         case .running:
             // The user or the system closed the window while the session was running.
             endSession()
@@ -566,12 +576,12 @@ final class SessionController {
                 // The recognizer stopped on its own while the session is still running.
                 guard self.sessionGeneration.isCurrent(token) else { return }
                 self.recognition = .failed
-                self.recognitionNotice = "语音识别停了。请点停止，再重新开始。"
+                self.recognitionNotice = String(localized: "语音识别已停止。请先停止，再重新开始。")
                 self.refreshWindow()
             } catch {
                 guard self.sessionGeneration.isCurrent(token), !(error is CancellationError) else { return }
                 self.recognition = .failed
-                self.recognitionNotice = "语音识别出错：\(error.localizedDescription)"
+                self.recognitionNotice = String(localized: "语音识别出错：\(error.localizedDescription)")
                 self.refreshWindow()
             }
         }
@@ -667,7 +677,7 @@ final class SessionController {
                 // spin. Whatever else is waiting goes on now.
                 self.transcript.translationFailed(for: entry.id)
                 self.pipeline.finishCurrent(succeeded: false)
-                self.translationNotice = "翻译出错：\(error.localizedDescription)"
+                self.translationNotice = String(localized: "翻译出错：\(error.localizedDescription)")
                 self.refreshWindow()
                 self.pump()
             }
@@ -703,12 +713,20 @@ final class SessionController {
     /// Shows the current captions, or one line saying what the session is waiting
     /// for when there are none yet or no broadcast runs. Outside a session, shows
     /// a sample caption.
+    /// What the preview shows with no session: one caption and its
+    /// translation, the translation in the language of the interface.
+    private static var previewLines: CaptionLines {
+        CaptionLines(
+            original: String(localized: "preview.original", defaultValue: "This is a demo caption."),
+            translation: String(localized: "preview.translation", defaultValue: "这是一条演示字幕。"))
+    }
+
     private func refreshWindow() {
         let layout = layout
         let frameHeight = CaptionFrame.height(for: layout)
         if frameHeight != self.frameHeight { self.frameHeight = frameHeight }
         guard session.isActive else {
-            window.show(.rows(CaptionBoard.rows(for: DemoCaptions.lines(at: 0), layout: layout)), frameHeight: frameHeight)
+            window.show(.rows(CaptionBoard.rows(for: Self.previewLines, layout: layout)), frameHeight: frameHeight)
             return
         }
         if layout == board.layout {
@@ -750,15 +768,15 @@ final class SessionController {
 
     private func text(for placeholder: CaptionPlaceholder) -> String {
         switch placeholder {
-        case .recognitionFailed: "语音识别没有启动"
-        case .preparingRecognition: "正在准备语音识别…"
-        case .audioUnavailable: "收不到声音"
-        case .waitingForBroadcast: "录屏未打开"
-        case .noSound: "暂时没有声音"
-        case .listening: "正在听…"
-        case .preparingTranslation: "正在准备翻译…"
-        case .translating: "正在翻译…"
-        case .translationUnavailable: "翻译用不了"
+        case .recognitionFailed: String(localized: "语音识别没有启动")
+        case .preparingRecognition: String(localized: "正在准备语音识别…")
+        case .audioUnavailable: String(localized: "收不到声音")
+        case .waitingForBroadcast: String(localized: "录屏未打开")
+        case .noSound: String(localized: "暂时没有声音")
+        case .listening: String(localized: "正在听…")
+        case .preparingTranslation: String(localized: "正在准备翻译…")
+        case .translating: String(localized: "正在翻译…")
+        case .translationUnavailable: String(localized: "翻译不可用")
         }
     }
 
