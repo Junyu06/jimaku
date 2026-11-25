@@ -691,6 +691,22 @@
         }
       }
     },
+    "源语言" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "From"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "源语言"
+          }
+        }
+      }
+    },
     "点「开始」后会弹出「屏幕直播」，点里面的「开始直播」。" : {
       "localizations" : {
         "en" : {
@@ -719,6 +735,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "用来听视频的声音"
+          }
+        }
+      }
+    },
+    "目标语言" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目标语言"
           }
         }
       }
@@ -883,22 +915,6 @@
         }
       }
     },
-    "翻译成" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Translate To"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "翻译成"
-          }
-        }
-      }
-    },
     "翻译用不了" : {
       "localizations" : {
         "en" : {
@@ -1023,22 +1039,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "语音识别没有启动"
-          }
-        }
-      }
-    },
-    "说话的语言" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Spoken Language"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "说话的语言"
           }
         }
       }

@@ -284,7 +284,7 @@ private struct LanguageRows: View {
     @State private var requestedPair: LanguagePair?
 
     var body: some View {
-        Picker("说话的语言", selection: spoken) {
+        Picker("源语言", selection: spoken) {
             ForEach(controller.settings.spokenChoices) { language in
                 Text(language.spokenName).tag(language)
             }
@@ -311,7 +311,7 @@ private struct LanguageRows: View {
             if let pair { controller.languagePackRequestEnded(for: pair, error: failure) }
         }
 
-        Picker("翻译成", selection: target) {
+        Picker("目标语言", selection: target) {
             ForEach(controller.settings.targetChoices) { language in
                 Text(language.writtenName).tag(language)
             }

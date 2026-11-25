@@ -5,7 +5,7 @@ status: not-run
 
 # The settings list only the languages the device reports
 
-- Input: on a device that can caption at least one pair of languages, open the app and open 说话的语言 (spoken language). If it lists only the language already chosen, the system may not have answered yet: close the menu and open it again, for up to a minute, until it lists more or the minute is over. Then note what it lists. For each language listed: choose it, start a session, play speech in that language, and stop.
+- Input: on a device that can caption at least one pair of languages, open the app and open 源语言 (source language). If it lists only the language already chosen, the system may not have answered yet: close the menu and open it again, for up to a minute, until it lists more or the minute is over. Then note what it lists. For each language listed: choose it, start a session, play speech in that language, and stop.
 - Expected result: every language listed starts a session whose original row shows the speech in that language. None of them ends in a message that speech recognition does not support the language.
 - Property: a spoken language is offered only when this device can recognize it.
 
