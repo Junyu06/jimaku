@@ -9,7 +9,7 @@ public struct LanguageSettings: Equatable, Sendable {
     public private(set) var chosen: LanguagePair
 
     /// The engine the user chose. `engine` is the one in use.
-    public var chosenEngine: TranslationEngine
+    public private(set) var chosenEngine: TranslationEngine
 
     /// The side the user chose last. When the device cannot do the pair, the
     /// other side gives way first. Stored with the choice.
@@ -90,10 +90,36 @@ public struct LanguageSettings: Equatable, Sendable {
         return CaptionLanguage.all.filter { offered.contains($0) || $0 == pair.target }
     }
 
-    /// The engines to offer for the pair, with the one in use always among them.
+    /// The engines that can translate the pair, with the one in use always
+    /// among them.
     public var engineChoices: [TranslationEngine] {
         let usable = support?.engines(for: pair) ?? []
         return TranslationEngine.allCases.filter { usable.contains($0) || $0 == engine }
+    }
+
+    /// What keeps `engine` from translating the pair in use, or nil when it
+    /// can or the device has not answered yet. The settings list every engine,
+    /// and one that has something in its way cannot be chosen.
+    public func obstacle(to engine: TranslationEngine) -> EngineObstacle? {
+        support?.obstacle(to: engine, for: pair)
+    }
+
+    /// Whether some engine can translate the pair in use, or the device has
+    /// not answered yet. When none can, the settings have no engine to show as
+    /// chosen. `engine` is then still the one the user chose, and a session
+    /// that is running keeps its translator or tries that engine.
+    public var canTranslate: Bool {
+        support.map { !$0.engines(for: pair).isEmpty } ?? true
+    }
+
+    /// Chooses an engine, unless something is in its way; the earlier choice
+    /// then stays. It can be chosen while a session runs. Returns whether it
+    /// was chosen.
+    @discardableResult
+    public mutating func choose(engine: TranslationEngine) -> Bool {
+        guard obstacle(to: engine) == nil else { return false }
+        chosenEngine = engine
+        return true
     }
 
     // MARK: Choosing

@@ -77,6 +77,74 @@ struct LanguageSettingsTests {
         #expect(settings.engineChoices == [.languagePack, .appleIntelligence])
     }
 
+    @Test("Before the device has answered, nothing is said to be in an engine's way")
+    func noObstacleBeforeAnAnswer() {
+        let settings = settings(toChinese(.korean), engine: .appleIntelligence)
+        #expect(settings.obstacle(to: .appleIntelligence) == nil)
+        #expect(settings.obstacle(to: .languagePack) == nil)
+    }
+
+    @Test("What is in an engine's way is told for the pair in use, not the pair chosen")
+    func obstacleForThePairInUse() {
+        var settings = settings(toChinese(.korean), engine: .appleIntelligence)
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.obstacle(to: .appleIntelligence) == .modelLacksLanguage(.korean))
+        #expect(settings.obstacle(to: .languagePack) == nil)
+
+        // French gives way to English, which both engines translate.
+        settings.choose(spoken: .french)
+        #expect(settings.pair == toChinese(.english))
+        #expect(settings.obstacle(to: .appleIntelligence) == nil)
+    }
+
+    @Test("On a device that can never run the model, the settings say so for that engine")
+    func obstacleOnADeviceWithoutTheModel() {
+        var device = packsOnly
+        device.deviceRunsModel = false
+        var settings = settings(toChinese(.english), engine: .appleIntelligence)
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.engine == .languagePack)
+        #expect(settings.obstacle(to: .appleIntelligence) == .deviceCannotRunModel)
+    }
+
+    @Test("An engine with something in its way cannot be chosen, and the earlier choice stays")
+    func unusableEngineIsNotChosen() {
+        var settings = settings(toChinese(.korean), engine: .languagePack)
+        settings.take(device, asked: settings.beginAsking())
+        let chose = settings.choose(engine: .appleIntelligence)
+        #expect(!chose)
+        #expect(settings.chosenEngine == .languagePack)
+        // With a pair both engines translate, the choice made earlier is still the one in use.
+        settings.choose(spoken: .english)
+        #expect(settings.engine == .languagePack)
+        let choseNow = settings.choose(engine: .appleIntelligence)
+        #expect(choseNow)
+        #expect(settings.engine == .appleIntelligence)
+    }
+
+    @Test("Before the device has answered, either engine can be chosen")
+    func anyEngineBeforeAnAnswer() {
+        var settings = settings(toChinese(.korean), engine: .languagePack)
+        let choseModel = settings.choose(engine: .appleIntelligence)
+        #expect(choseModel)
+        #expect(settings.chosenEngine == .appleIntelligence)
+        let chosePacks = settings.choose(engine: .languagePack)
+        #expect(chosePacks)
+        #expect(settings.chosenEngine == .languagePack)
+    }
+
+    @Test("When no engine can translate the pair in use, translating counts as not possible, and the engine chosen is kept for when one can")
+    func noUsableEngine() {
+        var settings = settings(toChinese(.english), engine: .appleIntelligence)
+        #expect(settings.canTranslate)
+        settings.take(LanguageSupport(), asked: settings.beginAsking())
+        #expect(!settings.canTranslate)
+        #expect(settings.chosenEngine == .appleIntelligence)
+        settings.take(device, asked: settings.beginAsking())
+        #expect(settings.canTranslate)
+        #expect(settings.engine == .appleIntelligence)
+    }
+
     @Test("The choices offered always include what is in use")
     func choicesIncludeTheCurrent() {
         var settings = settings(toChinese(.korean))
@@ -366,7 +434,8 @@ struct LanguageSettingsTests {
         settings.lock()
         let prepared = settings.preparation
         #expect(prepared.engine == .languagePack)
-        settings.chosenEngine = .languagePack
+        settings.choose(engine: .languagePack)
+        #expect(settings.chosenEngine == .languagePack)
         #expect(!settings.needsPreparingAgain(after: prepared, isReady: true, missedPack: false))
     }
 

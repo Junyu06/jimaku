@@ -1,5 +1,5 @@
 date: 2026-11-23
-status: accepted
+status: superseded in part by 2026-11-23-list-both-engines-and-grey-out-the-one-that-cannot-translate-with-the-reason.md: before the first answer the engine row lists both engines. The rest stands.
 supersedes: none
 
 # Keep the user's choice of languages apart from what the device can do
