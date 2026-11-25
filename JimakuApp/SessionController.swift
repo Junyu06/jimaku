@@ -260,7 +260,9 @@ final class SessionController {
 
     /// Can be changed while a session runs.
     func choose(engine: TranslationEngine) {
-        settings.chosenEngine = engine
+        // An engine that cannot translate the pair is not taken, even if a
+        // menu that was open while the answer changed still offers it.
+        guard settings.choose(engine: engine) else { return }
         reconcileTranslation()
     }
 

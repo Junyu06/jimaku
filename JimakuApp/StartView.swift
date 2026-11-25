@@ -312,14 +312,29 @@ private struct LanguageRows: View {
         .disabled(isRunning)
         .accessibilityIdentifier("target")
 
-        if controller.settings.engineChoices.count > 1 {
+        // While the device reports an engine that can translate these
+        // languages, or has not answered yet, both engines are listed. One
+        // that cannot is greyed out, with the reason after its name. The
+        // reason is part of the one line: a menu made by a picker shows no
+        // second line.
+        if controller.settings.canTranslate {
             Picker("翻译引擎", selection: engine) {
-                ForEach(controller.settings.engineChoices, id: \.self) { engine in
-                    switch engine {
-                    case .languagePack: Text("语言包").tag(engine)
-                    case .appleIntelligence: Text("Apple Intelligence").tag(engine)
-                    }
+                ForEach(TranslationEngine.allCases, id: \.self) { engine in
+                    let obstacle = controller.settings.obstacle(to: engine)
+                    Text(obstacle.map { "\(name(of: engine))（\(reason(for: $0))）" } ?? name(of: engine))
+                        .tag(engine)
+                        .selectionDisabled(obstacle != nil)
                 }
+            }
+            .accessibilityIdentifier("engine")
+        } else {
+            // The device's answer names no engine that can translate these
+            // languages, whether it denied them or said nothing about them,
+            // so a picker would have no line to show as chosen. The row says
+            // only that. A session that is running goes on with what it has
+            // and says what goes wrong.
+            LabeledContent("翻译引擎") {
+                Text("系统没有报告可用的翻译引擎")
             }
             .accessibilityIdentifier("engine")
         }
@@ -343,6 +358,25 @@ private struct LanguageRows: View {
 
     private var engine: Binding<TranslationEngine> {
         Binding(get: { controller.settings.engine }, set: { controller.choose(engine: $0) })
+    }
+
+    private func name(of engine: TranslationEngine) -> String {
+        switch engine {
+        case .languagePack: "语言包"
+        case .appleIntelligence: "Apple Intelligence"
+        }
+    }
+
+    /// Why an engine cannot be chosen, short enough to sit after its name.
+    private func reason(for obstacle: EngineObstacle) -> String {
+        switch obstacle {
+        case .deviceCannotRunModel: "这台设备不支持"
+        case .modelLacksLanguage(let language):
+            "不支持\(language == controller.languages.spoken ? language.spokenName : language.writtenName)"
+        case .noLanguagePack: "没有这两种语言的语言包"
+        case .sameLanguage: "两边是同一种语言"
+        case .notReported: "系统没有给出结果"
+        }
     }
 
     /// Asks the system for the language pack of the languages in use. While a
