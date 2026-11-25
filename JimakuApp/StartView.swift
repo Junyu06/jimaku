@@ -162,7 +162,7 @@ struct StartView: View {
         }
         .onAppear { controller.prepare() }
         .sheet(item: $explanation, onDismiss: startIfExplained) { use in
-            RecordingExplanationView(buttonTitle: use == .beforeStart ? "继续" : "好") {
+            RecordingExplanationView(buttonTitle: use == .beforeStart ? "继续" : "确认") {
                 controller.explanationWasRead()
                 startsAfterExplanation = use == .beforeStart
                 explanation = nil
