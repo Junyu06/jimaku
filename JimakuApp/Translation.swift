@@ -25,7 +25,7 @@ enum TranslationSetupError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .languagePackMissing(let languages):
-            String(localized: "\(languages.spoken.spokenName)翻译成\(languages.target.writtenName)的语言包还没下载。回到 Jimaku，在设置里点「下载」。")
+            String(localized: "\(languages.spoken.spokenName)到\(languages.target.writtenName)的语言包未下载。请回到 Jimaku，在设置里点「下载」。")
         case .languagePairNotSupported(let languages):
             String(localized: "系统的语言包不能把\(languages.spoken.spokenName)翻译成\(languages.target.writtenName)。")
         }

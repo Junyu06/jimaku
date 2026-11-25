@@ -145,7 +145,7 @@ struct StartView: View {
             }
 
             if !controller.transcript.entries.isEmpty {
-                Section("这一次的字幕") {
+                Section("本次字幕") {
                     ForEach(controller.transcript.entries) { entry in
                         VStack(alignment: .leading, spacing: 4) {
                             Text(entry.original)
@@ -347,7 +347,7 @@ private struct LanguageRows: View {
         }
 
         if controller.settings.needsLanguagePack {
-            LabeledContent("语言包还没下载") {
+            LabeledContent("语言包未下载") {
                 Button("下载") { requestLanguagePack() }
                     .disabled(packRequest != nil)
                     .accessibilityIdentifier("downloadLanguagePack")
@@ -380,9 +380,9 @@ private struct LanguageRows: View {
         case .deviceCannotRunModel: String(localized: "这台设备不支持")
         case .modelLacksLanguage(let language):
             String(localized: "不支持\(language == controller.languages.spoken ? language.spokenName : language.writtenName)")
-        case .noLanguagePack: String(localized: "没有这两种语言的语言包")
-        case .sameLanguage: String(localized: "两边是同一种语言")
-        case .notReported: String(localized: "系统没有给出结果")
+        case .noLanguagePack: String(localized: "无对应语言包")
+        case .sameLanguage: String(localized: "源语言与目标语言相同")
+        case .notReported: String(localized: "状态未知")
         }
     }
 

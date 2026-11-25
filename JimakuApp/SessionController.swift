@@ -48,7 +48,7 @@ final class SessionController {
     /// no pair.
     private var cannotStartNotice: String? {
         guard refusedStart, !settings.canStart else { return nil }
-        return String(localized: "这台设备现在识别不了\(languages.spoken.spokenName)，或者没法把它翻译成\(languages.target.writtenName)，开始不了。")
+        return String(localized: "此设备暂不支持识别\(languages.spoken.spokenName)或将其翻译为\(languages.target.writtenName)，无法开始。")
     }
 
     /// Added to a message about the language model failing, while changing the
@@ -286,7 +286,7 @@ final class SessionController {
     /// has a watch of its own.
     func languagePackRequestEnded(for pair: LanguagePair, error: (any Error)?) {
         packFailures[pair] = error.map {
-            String(localized: "\(pair.spoken.spokenName)翻译成\(pair.target.writtenName)的语言包没下载成：\($0.localizedDescription)")
+            String(localized: "\(pair.spoken.spokenName)到\(pair.target.writtenName)的语言包下载失败：\($0.localizedDescription)")
         }
         packWatches[pair]?.cancel()
         packWatches[pair] = Task { [weak self] in
@@ -380,7 +380,7 @@ final class SessionController {
             controller.endSession()
             // Cut the old window off, so nothing it reports later reaches a new session.
             controller.window.abandon()
-            controller.windowNotice = String(localized: "悬浮窗没能打开。请留在 Jimaku 里再点一次开始。")
+            controller.windowNotice = String(localized: "悬浮窗无法打开。请留在 Jimaku 里重试。")
         }
     }
 
@@ -435,7 +435,7 @@ final class SessionController {
         session.windowFailedToStart()
         guard wasActive else { return }
         endSession()
-        windowNotice = String(localized: "悬浮窗没能打开：\(error.localizedDescription)")
+        windowNotice = String(localized: "悬浮窗无法打开：\(error.localizedDescription)")
     }
 
     private func windowDidClose() {
@@ -447,7 +447,7 @@ final class SessionController {
             // The window went away before it ever appeared, which happens when a
             // start follows a stop too closely. Say so instead of ending silently.
             endSession()
-            windowNotice = String(localized: "悬浮窗没能打开，请再点一次开始。")
+            windowNotice = String(localized: "悬浮窗无法打开，请重试。")
         case .running:
             // The user or the system closed the window while the session was running.
             endSession()
@@ -576,7 +576,7 @@ final class SessionController {
                 // The recognizer stopped on its own while the session is still running.
                 guard self.sessionGeneration.isCurrent(token) else { return }
                 self.recognition = .failed
-                self.recognitionNotice = String(localized: "语音识别停了。请点停止，再重新开始。")
+                self.recognitionNotice = String(localized: "语音识别已停止。请先停止，再重新开始。")
                 self.refreshWindow()
             } catch {
                 guard self.sessionGeneration.isCurrent(token), !(error is CancellationError) else { return }
@@ -776,7 +776,7 @@ final class SessionController {
         case .listening: String(localized: "正在听…")
         case .preparingTranslation: String(localized: "正在准备翻译…")
         case .translating: String(localized: "正在翻译…")
-        case .translationUnavailable: String(localized: "翻译用不了")
+        case .translationUnavailable: String(localized: "翻译不可用")
         }
     }
 
