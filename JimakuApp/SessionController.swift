@@ -124,6 +124,24 @@ final class SessionController {
 
     private var sheetRequest = BroadcastSheetRequest()
 
+    /// The captions of earlier sessions, as the device holds them.
+    private(set) var archive: CaptionArchive
+    private let store = SavedSessionStore()
+    /// The session that runs, as it was last saved. Nil when none runs, and
+    /// when the user deleted what was saved of the one that does.
+    private var saving: SavedSession?
+    /// When the session that runs was last looked at for saving.
+    private var lastSaveLook = 0.0
+    /// The first caption of the session that runs that `saving` holds: later
+    /// than the first once the user deleted what was saved of it.
+    private var savedFromEntry = 0
+    /// Set when the user deleted what was saved while something was being
+    /// said: nothing is saved until that stretch of speech has ended.
+    private var skipsSpeechInProgress = false
+    /// Sessions that ended and could not be written. They are tried again at
+    /// each later save for as long as the app runs.
+    private var owed: [SavedSession] = []
+
     /// The user has closed the page that says why the recording is needed.
     private var explanationRead = UserDefaults.standard.bool(forKey: SessionController.explanationReadKey)
 
@@ -182,6 +200,10 @@ final class SessionController {
     private let log = Logger(subsystem: "Jimaku", category: "session")
 
     init() {
+        let (archive, over) = CaptionArchive.loaded(store.readAll())
+        self.archive = archive
+        for id in over { _ = store.delete(id) }
+        store.clearExports()
         let defaults = UserDefaults.standard
         settings = LanguageSettings(
             chosen: LanguagePair.restored(
@@ -330,6 +352,99 @@ final class SessionController {
         UserDefaults.standard.set(true, forKey: Self.explanationReadKey)
     }
 
+    // MARK: Saved sessions
+
+    /// How often, in seconds, a running session is looked at for saving.
+    private static let saveInterval = 10.0
+
+    /// Saves the session that runs, if anything was said since it was last
+    /// saved. Called now and then while it runs, when the app leaves the
+    /// front, and when the session ends; at the end, what was being said and
+    /// was not kept as a caption yet is saved as its last line.
+    func saveSession(atEnd: Bool = false) {
+        lastSaveLook = ProcessInfo.processInfo.systemUptime
+        owed.removeAll { keepOnDevice($0) }
+        guard var session = saving else { return }
+        var lines = transcript.entries.dropFirst(savedFromEntry).map {
+            SavedSession.Line(original: $0.original, translation: $0.translation)
+        }
+        // Not when it was already being said as the user deleted what was
+        // saved: `savedFromEntry` is then past every caption there is.
+        if atEnd, !transcript.pending.isEmpty, transcript.entries.count >= savedFromEntry {
+            lines.append(SavedSession.Line(original: transcript.pending, translation: nil))
+        }
+        guard !lines.isEmpty, lines != session.lines else { return }
+        session.lines = lines
+        // Nothing else changes until the session is on the device: a write
+        // that failed is tried again at the next look, and one that failed at
+        // the end is owed.
+        if keepOnDevice(session) {
+            saving = session
+        } else if atEnd {
+            owed.append(session)
+        }
+    }
+
+    /// Writes a session and lists it. An older session makes room only once
+    /// this one is on the device.
+    private func keepOnDevice(_ session: SavedSession) -> Bool {
+        guard store.write(session) else { return false }
+        for id in archive.keep(session) { _ = store.delete(id) }
+        return true
+    }
+
+    /// Deletes one saved session. A session that could not be deleted stays
+    /// listed. If it is the one that runs, what is said from here on is saved
+    /// as a session of its own.
+    func deleteSaved(_ id: UUID) {
+        // A session that ended and is still owed a write is not written
+        // after the user deleted it.
+        owed.removeAll { $0.id == id }
+        guard store.delete(id) else { return }
+        archive.remove(id)
+        if saving?.id == id { saveAfresh() }
+    }
+
+    /// Whether there is anything to delete: a listed session, or a file left
+    /// on the device that the list does not show.
+    var holdsSavedCaptions: Bool {
+        !archive.sessions.isEmpty || store.holdsAnything
+    }
+
+    /// Deletes everything saved, listed or not. What a session that runs
+    /// says from here on is saved as a session of its own.
+    func deleteAllSaved() {
+        owed = []
+        _ = store.deleteEverything()
+        // What could not be deleted is still there and is shown.
+        archive = CaptionArchive.loaded(store.readAll()).archive
+        saveAfresh()
+    }
+
+    /// Called whenever the transcript has taken in speech: ends the wait
+    /// that `saveAfresh` started once nothing is being said.
+    private func speechMovedOn() {
+        guard skipsSpeechInProgress, transcript.pending.isEmpty else { return }
+        skipsSpeechInProgress = false
+        savedFromEntry = transcript.entries.count
+    }
+
+    /// After the user deleted what was saved of the session that runs: the
+    /// captions so far stay deleted, and the rest starts a new saved session.
+    private func saveAfresh() {
+        guard let session = saving else { return }
+        // What is being said at this moment goes with what was deleted,
+        // however many captions it is cut into: saving starts again at the
+        // first caption after the speaker has paused.
+        if transcript.pending.isEmpty {
+            savedFromEntry = transcript.entries.count
+        } else {
+            skipsSpeechInProgress = true
+            savedFromEntry = Int.max
+        }
+        saving = SavedSession(id: UUID(), startedAt: Date(), spoken: session.spoken, target: session.target, lines: [])
+    }
+
     func performPrimaryAction() {
         if session.primaryAction == .start, session.canPerformPrimaryAction, !window.isSupported {
             windowNotice = String(localized: "这台设备不支持画中画，悬浮窗开不了。")
@@ -357,6 +472,12 @@ final class SessionController {
         // The languages stay as they are until the session ends.
         settings.lock()
         transcript = Transcript(rules: languages.spoken.chunkRules)
+        saving = SavedSession(
+            id: UUID(), startedAt: Date(), spoken: languages.spoken.identifier, target: languages.target.identifier,
+            lines: [])
+        savedFromEntry = 0
+        skipsSpeechInProgress = false
+        lastSaveLook = ProcessInfo.processInfo.systemUptime
         pipeline.reset()
         board = CaptionBoard(layout: layout)
         pauses = PauseDetector(sampleRate: AudioRing.sampleRate)
@@ -459,6 +580,8 @@ final class SessionController {
     /// Stops everything a session started. Results that arrive afterwards belong to
     /// stale generations and are ignored.
     private func endSession() {
+        saveSession(atEnd: true)
+        saving = nil
         sessionGeneration.invalidate()
         sheetRequest.drop()
         translatorGeneration.invalidate()
@@ -505,6 +628,11 @@ final class SessionController {
                 #if targetEnvironment(simulator)
                     self.audio.writeSimulatedAudio(elapsed: elapsed, duration: interval)
                 #endif
+                // What was said so far is saved now and then, so a session
+                // that ends with the app being closed is not lost whole.
+                if ProcessInfo.processInfo.systemUptime - self.lastSaveLook >= Self.saveInterval {
+                    self.saveSession()
+                }
                 let samples = self.audio.readNewSamples()
                 let status = self.audio.status
                 if status != self.audioStatus {
@@ -539,6 +667,7 @@ final class SessionController {
                     // Audio that never goes quiet gives no such pause, so a guess
                     // that stops changing ends a caption as well.
                     let kept = self.transcript.elapse(to: ProcessInfo.processInfo.systemUptime)
+                    self.speechMovedOn()
                     if !kept.isEmpty {
                         kept.forEach { self.pipeline.settle($0) }
                         self.pump()
@@ -592,6 +721,7 @@ final class SessionController {
         for kept in transcript.apply(update, at: ProcessInfo.processInfo.systemUptime) {
             pipeline.settle(kept)
         }
+        speechMovedOn()
         pump()
         refreshWindow()
     }

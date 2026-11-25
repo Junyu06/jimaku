@@ -24,7 +24,8 @@ Accepted requirements for the first version. The Status section at the end says 
 - The user can switch the translation engine between the Translation framework and the on-device Apple Intelligence model. Both engines are listed. One that cannot translate the languages in use on this device is greyed out, cannot be chosen, and says why. When the device's answer names no engine that can, the settings say that the system reported no usable translation engine, in place of the list.
 - When the chosen languages need a language pack that the system offers and has not downloaded, the settings say so and have a button that brings up the system's download. A session started without the pack shows original-language captions and names the pack that is missing; it starts translating when the app learns that the pack has arrived, which it looks for during some eleven minutes after the download sheet closes and each time it comes to the front.
 - The user can change the caption text size.
-- The app keeps a log of the captions of the current session, readable in the app. It is not kept after the app is closed.
+- The app keeps a log of the captions of the current session, readable in the app.
+- The captions of the newest thirty sessions are kept on the device and are not uploaded or backed up. A page, Caption History, lists them by when they started, with their languages and first line. A session can be opened and read, exported as a plain-text file through the system's share sheet, and deleted; all can be deleted at once after a question that says they cannot be brought back.
 - Tapping Start brings up the system's screen-broadcast sheet without another tap in the app; the first time, after the page that says why the recording is needed has been closed with its button. Once the floating window is up and no broadcast runs, the start page shows one button as wide as the page that brings the sheet up, with a line of a few words under it saying what the recording is for, and a question mark; the floating window says that the recording is not on, in place of any captions it has, for as long as no broadcast runs. Texts on the start page are labels, not sentences.
 - A tap on the line with the question mark brings up a page that says what the recording is for, that no picture is kept, and that the system asks for it at each start. The same page comes up once by itself, at the first tap on Start, unless the user has already closed it with its button; the session starts when the user closes it with its button. A help row under the settings brings the page up whether or not a session runs, and closing it there with its button counts as having read it.
 - Closing the floating window ends the session. It also stops the screen broadcast if the system allows the app to do so; otherwise the user stops the broadcast from the system indicator.
@@ -33,7 +34,7 @@ Accepted requirements for the first version. The Status section at the end says 
 
 ## Not in the first version
 
-Languages outside the list, automatic language detection, caption history across sessions and its deletion, accounts, export, App Store distribution.
+Languages outside the list, automatic language detection, accounts, caption files with times, App Store distribution.
 
 ## Accepted when
 
@@ -44,6 +45,7 @@ On a physical iPhone and a physical iPad:
 - Switching the translation engine keeps captions coming.
 - Changing the text size, the display mode, and the number of translation lines changes the floating window.
 - After returning to the app, the captions of the session just watched are readable.
+- After two sessions and after the app has been closed and opened again, both are in the list of earlier sessions; one of them, exported, is a text file in Files with each original line over its translation.
 - The first tap on Start, when the page that says why the recording is needed has not been closed with its button before, shows that page; its button starts the session, and the system's screen-broadcast sheet then comes up once without another tap. A later tap on Start brings up the system's screen-broadcast sheet without another tap; with the sheet closed and no broadcast started, the wide button brings it up again, and the question mark under it brings up the page.
 - Closing the floating window stops the captions.
 
@@ -65,4 +67,5 @@ All requirements have code written for them. Each case under `docs/cases/` recor
 - The floating window saying that the recording is off over captions it already has (2026-11-24): seen in an iPad simulator with the stand-in for the broadcast off. A broadcast stopped in the middle of a session has not been tried on a device. See `docs/decisions/2026-11-24-say-that-the-recording-is-off-in-place-of-captions-already-shown-while-no-broadcast-runs.md`.
 - The page that says why the recording is needed (2026-11-25): in an iPad simulator it came up at the first tap on Start and the session started from its button; it came up from the question mark under the wide button; taps on the wide button did not bring it up; and the help row under the settings brought it up with no session running. Not run on a device. See `docs/decisions/2026-11-25-say-what-the-recording-is-for-under-the-wide-button-and-why-it-is-needed-behind-a-question-mark.md` and `docs/decisions/2026-11-25-show-the-page-that-says-why-the-recording-is-needed-once-before-the-first-session.md`.
 - The English interface (2026-11-25): in an iPad simulator launched in English, the start page, the page that says why the recording is needed, and the caption window's notice were in English. Not seen: the language row in the system's Settings, the extension's messages, and most notices. See `docs/decisions/2026-11-25-leave-the-choice-of-the-interfaces-language-to-the-systems-settings.md`.
+- Keeping the captions of earlier sessions (2026-11-25): in an iPad simulator a session was listed after it ended and after the app was installed again, opened to its lines, was written as a text file, and was gone after deleting all. Not run on a device. The share sheet came up for the text file; saving to Files was not done. See `docs/decisions/2026-11-25-keep-the-captions-of-the-last-thirty-sessions-on-the-device.md` and the two decisions it names.
 - Nothing has run on an iPhone.
