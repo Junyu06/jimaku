@@ -4,7 +4,7 @@ Accepted requirements for the first version. The Status section at the end says 
 
 ## What the user does
 
-1. Opens Jimaku, picks the spoken language and the language to translate into, taps Start. The first time, a page says why a screen recording is needed, and the user taps Continue.
+1. Opens Jimaku, picks the spoken language and the language to translate into, taps Start. The first time, unless the user has read it from the help row, a page says why a screen recording is needed, and the user taps Continue.
 2. A floating caption window appears, and the system's screen-broadcast sheet comes up by itself.
 3. Confirms the broadcast in that sheet.
 4. Switches to another app and plays a video. The window shows the original line and its translation.
@@ -26,7 +26,7 @@ Accepted requirements for the first version. The Status section at the end says 
 - The user can change the caption text size.
 - The app keeps a log of the captions of the current session, readable in the app. It is not kept after the app is closed.
 - Tapping Start brings up the system's screen-broadcast sheet without another tap in the app; the first time, after the page that says why the recording is needed has been closed with its button. Once the floating window is up and no broadcast runs, the start page shows one button as wide as the page that brings the sheet up, with a line of a few words under it saying what the recording is for, and a question mark; the floating window says that the recording is not on, in place of any captions it has, for as long as no broadcast runs. Texts on the start page are labels, not sentences.
-- A tap on the line with the question mark brings up a page that says what the recording is for, that no picture is kept, and that the system asks for it at each start. The same page comes up once by itself, at the first tap on Start; the session starts when the user closes it with its button. A help row under the settings brings the page up at any time.
+- A tap on the line with the question mark brings up a page that says what the recording is for, that no picture is kept, and that the system asks for it at each start. The same page comes up once by itself, at the first tap on Start, unless the user has already closed it with its button; the session starts when the user closes it with its button. A help row under the settings brings the page up whether or not a session runs, and closing it there with its button counts as having read it.
 - Closing the floating window ends the session. It also stops the screen broadcast if the system allows the app to do so; otherwise the user stops the broadcast from the system indicator.
 - No account, no network service, no cost to run.
 
@@ -43,7 +43,7 @@ On a physical iPhone and a physical iPad:
 - Switching the translation engine keeps captions coming.
 - Changing the text size, the display mode, and the number of translation lines changes the floating window.
 - After returning to the app, the captions of the session just watched are readable.
-- The first tap on Start shows the page that says why the recording is needed; its button starts the session, and the system's screen-broadcast sheet then comes up once without another tap. A later tap on Start brings up the system's screen-broadcast sheet without another tap; with the sheet closed and no broadcast started, the wide button brings it up again, and the question mark under it brings up the page.
+- The first tap on Start, when the page that says why the recording is needed has not been closed with its button before, shows that page; its button starts the session, and the system's screen-broadcast sheet then comes up once without another tap. A later tap on Start brings up the system's screen-broadcast sheet without another tap; with the sheet closed and no broadcast started, the wide button brings it up again, and the question mark under it brings up the page.
 - Closing the floating window stops the captions.
 
 Running reliably for a full hour is not part of this acceptance.
