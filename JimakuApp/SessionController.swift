@@ -108,6 +108,7 @@ final class SessionController {
     private static let textSizeKey = "captionTextSize"
     private static let modeKey = "captionMode"
     private static let linesKey = "captionLines"
+    private static let explanationReadKey = "recordingExplanationRead"
 
     /// How long the caption window may take to appear or to close before the session
     /// stops waiting for it.
@@ -120,6 +121,9 @@ final class SessionController {
     private let appleIntelligenceSource: any TranslatorSource = AppleIntelligenceSource()
 
     private var sheetRequest = BroadcastSheetRequest()
+
+    /// The user has closed the page that says why the recording is needed.
+    private var explanationRead = UserDefaults.standard.bool(forKey: SessionController.explanationReadKey)
 
     private var windowNotice: String?
     private var recognitionNotice: String?
@@ -297,6 +301,22 @@ final class SessionController {
     }
 
     // MARK: Starting and stopping
+
+    /// Whether the tap on the main button first shows why the recording is
+    /// needed: once, before the first session that would start.
+    var startNeedsExplanation: Bool {
+        RecordingExplanation.isDueBeforeStart(
+            readBefore: explanationRead,
+            startWouldGoAhead: session.primaryAction == .start && session.canPerformPrimaryAction
+                && window.isSupported && settings.canStart)
+    }
+
+    /// The user closed the explanation with its button.
+    func explanationWasRead() {
+        guard !explanationRead else { return }
+        explanationRead = true
+        UserDefaults.standard.set(true, forKey: Self.explanationReadKey)
+    }
 
     func performPrimaryAction() {
         if session.primaryAction == .start, session.canPerformPrimaryAction, !window.isSupported {
