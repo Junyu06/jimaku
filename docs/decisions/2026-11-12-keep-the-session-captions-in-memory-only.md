@@ -1,5 +1,5 @@
 date: 2026-11-12
-status: accepted
+status: superseded by 2026-11-25-keep-the-captions-of-the-last-thirty-sessions-on-the-device.md
 supersedes: none
 
 # Keep the session captions in memory only

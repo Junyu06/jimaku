@@ -6,8 +6,8 @@ status: simulated
 # The captions of the session are readable in the app
 
 - Input: run a session, then return to the app.
-- Expected result: below the settings, a list shows every kept piece of speech of this session with its translation, oldest first. A piece is a sentence, a clause, or a few seconds of words. Starting a new session clears it. Closing the app discards it.
-- Property: the reader can look back at what was said during the current session, and nothing is kept afterwards.
+- Expected result: below the settings, a list shows every kept piece of speech of this session with its translation, oldest first. A piece is a sentence, a clause, or a few seconds of words. Starting a new session clears this list; the session's captions stay in the list of earlier sessions (`log-002`).
+- Property: the reader can look back at what was said during the current session.
 
 ## Evidence
 
