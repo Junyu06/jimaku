@@ -1,6 +1,7 @@
 import Foundation
 import JimakuCore
 import Observation
+import UIKit
 import os
 
 /// Runs a caption session: floats the window, reads the audio the broadcast
@@ -19,6 +20,11 @@ final class SessionController {
 
     /// What is known about the incoming audio while a session runs.
     private(set) var audioStatus: AudioAvailability = .notBroadcasting
+
+    /// Whether the app owes the user the system's broadcast sheet without a
+    /// tap. The start page hands this to the system's control, which takes
+    /// the request when it is on the page to be pressed.
+    var broadcastSheetIsOwed: Bool { sheetRequest.isOwed }
 
     /// What has been said in this session.
     private(set) var transcript = Transcript()
@@ -102,6 +108,7 @@ final class SessionController {
     private static let textSizeKey = "captionTextSize"
     private static let modeKey = "captionMode"
     private static let linesKey = "captionLines"
+    private static let explanationReadKey = "recordingExplanationRead"
 
     /// How long the caption window may take to appear or to close before the session
     /// stops waiting for it.
@@ -112,6 +119,11 @@ final class SessionController {
     private let languagePackSource: any TranslatorSource
     private let supportSource: any LanguageSupportSource
     private let appleIntelligenceSource: any TranslatorSource = AppleIntelligenceSource()
+
+    private var sheetRequest = BroadcastSheetRequest()
+
+    /// The user has closed the page that says why the recording is needed.
+    private var explanationRead = UserDefaults.standard.bool(forKey: SessionController.explanationReadKey)
 
     private var windowNotice: String?
     private var recognitionNotice: String?
@@ -292,6 +304,22 @@ final class SessionController {
 
     // MARK: Starting and stopping
 
+    /// Whether the tap on the main button first shows why the recording is
+    /// needed: once, before the first session that would start.
+    var startNeedsExplanation: Bool {
+        RecordingExplanation.isDueBeforeStart(
+            readBefore: explanationRead,
+            startWouldGoAhead: session.primaryAction == .start && session.canPerformPrimaryAction
+                && window.isSupported && settings.canStart)
+    }
+
+    /// The user closed the explanation with its button.
+    func explanationWasRead() {
+        guard !explanationRead else { return }
+        explanationRead = true
+        UserDefaults.standard.set(true, forKey: Self.explanationReadKey)
+    }
+
     func performPrimaryAction() {
         if session.primaryAction == .start, session.canPerformPrimaryAction, !window.isSupported {
             windowNotice = "这台设备不支持画中画，悬浮窗开不了。"
@@ -360,8 +388,35 @@ final class SessionController {
     }
 
     private func windowDidStart() {
+        let wasStarting = session.state == .starting
         session.windowDidStart()
         trace("window started, now \(String(describing: self.session.state))")
+        // With no broadcast running, the app owes the user the system's sheet
+        // from here on, so that Start needs no second tap in the app. The page
+        // must show the same thing the request was judged by.
+        let status = audio.status
+        if status != audioStatus {
+            audioStatus = status
+            refreshWindow()
+        }
+        sheetRequest.windowAppeared(sessionWasStarting: wasStarting, audio: status)
+    }
+
+    /// The system's control is on the page and can be pressed. Returns whether
+    /// to press it for the user, and uses up what was owed.
+    func takeBroadcastSheetRequest() -> Bool {
+        sheetRequest.take(
+            sessionRunning: session.state == .running,
+            audio: audio.status,
+            appIsActive: UIApplication.shared.applicationState == .active
+        )
+    }
+
+    /// The user pressed the system's control or left the app: what was owed
+    /// is not kept.
+    func dropBroadcastSheetRequest() {
+        guard sheetRequest.isOwed else { return }
+        sheetRequest.drop()
     }
 
     private func windowFailedToStart(_ error: Error) {
@@ -395,6 +450,7 @@ final class SessionController {
     /// stale generations and are ignored.
     private func endSession() {
         sessionGeneration.invalidate()
+        sheetRequest.drop()
         translatorGeneration.invalidate()
         translatorToken = nil
         translator = nil
@@ -645,7 +701,8 @@ final class SessionController {
     }
 
     /// Shows the current captions, or one line saying what the session is waiting
-    /// for when there are none yet. Outside a session, shows a sample caption.
+    /// for when there are none yet or no broadcast runs. Outside a session, shows
+    /// a sample caption.
     private func refreshWindow() {
         let layout = layout
         let frameHeight = CaptionFrame.height(for: layout)
@@ -675,6 +732,8 @@ final class SessionController {
                 hasSpeech: !transcript.entries.isEmpty || !transcript.pending.isEmpty
             )
             window.show(.notice(text(for: placeholder)), frameHeight: frameHeight)
+        } else if let notice = CaptionPlaceholder.replacingCaptions(recognition: recognition, audio: audioStatus) {
+            window.show(.notice(text(for: notice)), frameHeight: frameHeight)
         } else {
             window.show(.rows(board.rows), frameHeight: frameHeight)
         }
@@ -694,7 +753,7 @@ final class SessionController {
         case .recognitionFailed: "语音识别没有启动"
         case .preparingRecognition: "正在准备语音识别…"
         case .audioUnavailable: "收不到声音"
-        case .waitingForBroadcast: "等待录屏开始"
+        case .waitingForBroadcast: "录屏未打开"
         case .noSound: "暂时没有声音"
         case .listening: "正在听…"
         case .preparingTranslation: "正在准备翻译…"

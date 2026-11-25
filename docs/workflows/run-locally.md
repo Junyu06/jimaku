@@ -28,6 +28,14 @@ xcodebuild -project Jimaku.xcodeproj -scheme Jimaku -destination 'generic/platfo
 
 Or open `Jimaku.xcodeproj` in Xcode, pick a simulator, and press Run.
 
+In the simulator a stand-in writes a tone into the shared audio ring in place of the broadcast extension. To look at the start page without it, launch with `-simulatedRecording off` (no broadcast) or `-simulatedRecording silent` (a broadcast that hands over no sound). After quitting a run that wrote the tone, wait two seconds before a silent one, or its first moments still count as sound:
+
+```bash
+xcrun simctl launch booted <bundle identifier> -simulatedRecording off
+```
+
+The first tap on Start shows a page that says why the recording is needed, once for each installed app. To see it again, or to skip it, launch with `-recordingExplanationRead NO` or `-recordingExplanationRead YES`.
+
 Screen broadcast, Picture in Picture, and background execution are not verified in the simulator. See `docs/conventions/write-the-failing-test-before-the-code.md`.
 
 ## Run on your own device

@@ -9,6 +9,11 @@ struct StartView: View {
     @State private var controller = SessionController()
     @Environment(\.scenePhase) private var scenePhase
 
+    /// The page that says why the recording is needed, while it is shown.
+    @State private var explanation: ExplanationUse?
+    /// Set when that page was closed with its button before a first session.
+    @State private var startsAfterExplanation = false
+
     private var isRunning: Bool { controller.session.isActive }
 
     var body: some View {
@@ -18,33 +23,77 @@ struct StartView: View {
                     .aspectRatio(controller.frameSize, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .listRowInsets(EdgeInsets(top: 12, leading: 12, bottom: 12, trailing: 12))
+                    .listRowSeparator(.hidden)
+
+                if guide == .openRecording {
+                    // Drawn as a button and not one: the system's control lies
+                    // over all of it and takes the tap.
+                    Button {} label: {
+                        Text("打开录屏")
+                            .font(.title3.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                    .overlay {
+                        BroadcastPicker(
+                            sheetIsOwed: controller.broadcastSheetIsOwed,
+                            takeSheetRequest: { controller.takeBroadcastSheetRequest() },
+                            pressed: { controller.dropBroadcastSheetRequest() }
+                        )
+                        .accessibilityIdentifier("broadcastPicker")
+                    }
+                    .listRowSeparator(.hidden)
+
+                    // The reason in a few words, and the rest behind the
+                    // question mark. In a row of its own: in one row with the
+                    // wide button, a tap on that button opened this too.
+                    Button {
+                        explanation = .asked
+                    } label: {
+                        HStack(spacing: 5) {
+                            Text("用来听视频的声音")
+                                .foregroundStyle(Color.secondary)
+                            Image(systemName: "questionmark.circle")
+                        }
+                        .font(.footnote)
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("为什么要打开录屏")
+                    .accessibilityIdentifier("recordingGuide")
+                    .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
+                    .listRowSeparator(.hidden)
+                } else if let guide {
+                    Text(text(for: guide))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityIdentifier("recordingGuide")
+                        .listRowSeparator(.hidden)
+                }
 
                 Button {
-                    controller.performPrimaryAction()
+                    if controller.startNeedsExplanation {
+                        explanation = .beforeStart
+                    } else {
+                        controller.performPrimaryAction()
+                    }
                 } label: {
                     Text(primaryActionTitle)
                         .font(.title3.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
-                .buttonStyle(.borderedProminent)
+                // While the recording is the thing to open, Stop steps back:
+                // from the tap on Start, so it does not change when the wide
+                // button arrives.
+                .prominent(!(isRunning && controller.audioStatus == .notBroadcasting))
                 .disabled(!controller.session.canPerformPrimaryAction)
                 .accessibilityIdentifier("primaryAction")
-
-                if isRunning, let hint = audioHint {
-                    HStack(spacing: 12) {
-                        Text(hint)
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .accessibilityIdentifier("audioHint")
-                        Spacer(minLength: 0)
-                        if controller.audioStatus == .notBroadcasting {
-                            BroadcastPicker()
-                                .frame(width: 44, height: 44)
-                                .accessibilityIdentifier("broadcastPicker")
-                        }
-                    }
-                }
+                .listRowSeparator(.hidden)
 
                 if let notice = controller.notice {
                     Text(notice)
@@ -88,6 +137,13 @@ struct StartView: View {
                 }
             }
 
+            // Always there: the line under the wide button shows only while
+            // the recording is off, and the page comes by itself only once.
+            Section("帮助") {
+                Button("为什么要打开录屏") { explanation = .asked }
+                    .accessibilityIdentifier("recordingHelp")
+            }
+
             if !controller.transcript.entries.isEmpty {
                 Section("这一次的字幕") {
                     ForEach(controller.transcript.entries) { entry in
@@ -105,26 +161,86 @@ struct StartView: View {
             }
         }
         .onAppear { controller.prepare() }
+        .sheet(item: $explanation, onDismiss: startIfExplained) { use in
+            RecordingExplanationView(buttonTitle: use == .beforeStart ? "继续" : "确认") {
+                controller.explanationWasRead()
+                startsAfterExplanation = use == .beforeStart
+                explanation = nil
+            }
+            // As tall as what it says where the system gives a sheet a size
+            // of its own; elsewhere the sheet is the system's.
+            .presentationSizing(.form.fitted(horizontal: false, vertical: true))
+        }
         .onChange(of: scenePhase) { _, phase in
             // A language pack may have been downloaded in the system's settings.
-            if phase == .active { controller.refreshLanguageSupport() }
+            if phase == .active {
+                controller.refreshLanguageSupport()
+            } else {
+                // A sheet the app owed is not shown to a user who has left.
+                controller.dropBroadcastSheetRequest()
+                // Nor is a session started for them.
+                startsAfterExplanation = false
+            }
         }
     }
 
-    /// What the user should know about the audio. Nil when audio is arriving.
-    private var audioHint: String? {
-        switch controller.audioStatus {
-        case .unavailable: "读不到共享的音频缓冲，收不到别的 app 的声音。"
-        case .notBroadcasting: "还没开始录屏。点右边的圆钮，选 Jimaku，开始直播。"
-        case .stalled: "录屏已开始，暂时没有声音。"
-        case .receiving: nil
+    /// What the page says about the screen recording. Nil until the caption
+    /// window is up and while sound arrives.
+    private var guide: RecordingGuide? {
+        RecordingGuide.choose(windowIsUp: controller.session.state == .running, audio: controller.audioStatus)
+    }
+
+    /// A label, not a sentence: short enough to be read at a glance. Where the
+    /// recording is offered the row is a button and has its own words.
+    private func text(for guide: RecordingGuide) -> String {
+        switch guide {
+        case .openRecording: ""
+        case .noSound: "录屏已打开，暂无声音"
+        case .cannotHear: "收不到其他 App 的声音"
         }
+    }
+
+    /// Starts the session the explanation stood before, once the page is gone:
+    /// the caption window and the system's sheet come up over the start page.
+    /// Not for a user who has left the app while the page was going.
+    private func startIfExplained() {
+        let closedWithButton = startsAfterExplanation
+        startsAfterExplanation = false
+        guard
+            RecordingExplanation.startsSessionOnceGone(
+                closedWithButtonBeforeStart: closedWithButton,
+                appIsActive: scenePhase == .active,
+                sessionIsIdle: controller.session.state == .idle)
+        else { return }
+        controller.performPrimaryAction()
     }
 
     private var primaryActionTitle: String {
         switch controller.session.primaryAction {
         case .start: "开始"
         case .stop: "停止"
+        }
+    }
+}
+
+/// Why the explanation of the recording is on the screen.
+private enum ExplanationUse: Identifiable {
+    /// Before the first session: closing it with its button starts the session.
+    case beforeStart
+    /// The user asked for it.
+    case asked
+
+    var id: Self { self }
+}
+
+extension View {
+    /// The filled button style, or the quieter bordered one.
+    @ViewBuilder
+    fileprivate func prominent(_ isProminent: Bool) -> some View {
+        if isProminent {
+            buttonStyle(.borderedProminent)
+        } else {
+            buttonStyle(.bordered)
         }
     }
 }

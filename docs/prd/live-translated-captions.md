@@ -4,9 +4,9 @@ Accepted requirements for the first version. The Status section at the end says 
 
 ## What the user does
 
-1. Opens Jimaku, picks the spoken language and the language to translate into, taps Start.
-2. Confirms the system screen-broadcast prompt.
-3. A floating caption window appears.
+1. Opens Jimaku, picks the spoken language and the language to translate into, taps Start. The first time, unless the user has read it from the help row, a page says why a screen recording is needed, and the user taps Continue.
+2. A floating caption window appears, and the system's screen-broadcast sheet comes up by itself.
+3. Confirms the broadcast in that sheet.
 4. Switches to another app and plays a video. The window shows the original line and its translation.
 5. Returns to Jimaku to read the captions of this session, or closes the floating window to stop.
 
@@ -25,6 +25,8 @@ Accepted requirements for the first version. The Status section at the end says 
 - When the chosen languages need a language pack that the system offers and has not downloaded, the settings say so and have a button that brings up the system's download. A session started without the pack shows original-language captions and names the pack that is missing; it starts translating when the app learns that the pack has arrived, which it looks for during some eleven minutes after the download sheet closes and each time it comes to the front.
 - The user can change the caption text size.
 - The app keeps a log of the captions of the current session, readable in the app. It is not kept after the app is closed.
+- Tapping Start brings up the system's screen-broadcast sheet without another tap in the app; the first time, after the page that says why the recording is needed has been closed with its button. Once the floating window is up and no broadcast runs, the start page shows one button as wide as the page that brings the sheet up, with a line of a few words under it saying what the recording is for, and a question mark; the floating window says that the recording is not on, in place of any captions it has, for as long as no broadcast runs. Texts on the start page are labels, not sentences.
+- A tap on the line with the question mark brings up a page that says what the recording is for, that no picture is kept, and that the system asks for it at each start. The same page comes up once by itself, at the first tap on Start, unless the user has already closed it with its button; the session starts when the user closes it with its button. A help row under the settings brings the page up whether or not a session runs, and closing it there with its button counts as having read it.
 - Closing the floating window ends the session. It also stops the screen broadcast if the system allows the app to do so; otherwise the user stops the broadcast from the system indicator.
 - No account, no network service, no cost to run.
 
@@ -41,6 +43,7 @@ On a physical iPhone and a physical iPad:
 - Switching the translation engine keeps captions coming.
 - Changing the text size, the display mode, and the number of translation lines changes the floating window.
 - After returning to the app, the captions of the session just watched are readable.
+- The first tap on Start, when the page that says why the recording is needed has not been closed with its button before, shows that page; its button starts the session, and the system's screen-broadcast sheet then comes up once without another tap. A later tap on Start brings up the system's screen-broadcast sheet without another tap; with the sheet closed and no broadcast started, the wide button brings it up again, and the question mark under it brings up the page.
 - Closing the floating window stops the captions.
 
 Running reliably for a full hour is not part of this acceptance.
@@ -57,4 +60,7 @@ All requirements have code written for them. Each case under `docs/cases/` recor
 - On a physical iPad (2026-11-23, reported by the owner with one screenshot): the settings for both languages and the engine, and a session with Chinese spoken, English as the target, the Apple Intelligence engine, and the translation only. The entries of the session's captions visible in the screenshot had English translations under the Chinese. One sentence was refused by the model's guardrails; the app showed the system's message for it and the window showed original Chinese. The download of a language pack was not reported on.
 - Translating under the permissive guardrails (2026-11-23): on a Mac, given as text, the app's translator code translated three sentences the model's default guardrails refused, and turned a refusal thrown by the default model into the app's own description. Not run in the app or on a device. See `translation-006` and `translation-007` under `docs/cases/`.
 - Listing both engines (2026-11-23): in an iPad simulator, with Hindi as the spoken language, the Apple Intelligence engine was greyed out with its reason; after it was tapped and Japanese chosen again, the engine chosen before was still the one shown, and after the app was opened again both engines could be chosen with that one checked. A device that cannot run the model, a pair without a language pack, and the settings with no engine usable have not been seen. See `translation-008` and `translation-009` under `docs/cases/`.
+- Bringing up the broadcast sheet from Start, and the wide button (2026-11-23): in an iPad simulator the page showed the wide button with its label while the stand-in for the broadcast was off, and the label for a broadcast with no sound while it stood in for one; a build that logged it sent the system's control one tap after Start, and taps near either end of the wide button reached the control's button. The simulator has no screen broadcast, so no sheet was seen. Not run anywhere: the sheet coming up after Start, a tap on the wide button bringing it up, and VoiceOver on that button. See `docs/decisions/2026-11-23-press-the-systems-broadcast-control-in-code-when-the-caption-window-has-appeared.md` and `docs/decisions/2026-11-23-lay-the-systems-broadcast-control-over-one-wide-button-while-no-broadcast-runs.md`.
+- The floating window saying that the recording is off over captions it already has (2026-11-24): seen in an iPad simulator with the stand-in for the broadcast off. A broadcast stopped in the middle of a session has not been tried on a device. See `docs/decisions/2026-11-24-say-that-the-recording-is-off-in-place-of-captions-already-shown-while-no-broadcast-runs.md`.
+- The page that says why the recording is needed (2026-11-25): in an iPad simulator it came up at the first tap on Start and the session started from its button; it came up from the question mark under the wide button; taps on the wide button did not bring it up; and the help row under the settings brought it up with no session running. Not run on a device. See `docs/decisions/2026-11-25-say-what-the-recording-is-for-under-the-wide-button-and-why-it-is-needed-behind-a-question-mark.md` and `docs/decisions/2026-11-25-show-the-page-that-says-why-the-recording-is-needed-once-before-the-first-session.md`.
 - Nothing has run on an iPhone.
